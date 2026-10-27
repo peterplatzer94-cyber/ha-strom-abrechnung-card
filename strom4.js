@@ -9,7 +9,7 @@ class StromAbrechnungCard extends HTMLElement {
       price: 0.32,
       base_fee: 146.72,
       default_abschlag: 238.45,
-      winter_profile: "1.45", // Standard: Mittel
+      winter_profile: "1.45",
       ...config
     };
     this.requestUpdate();
@@ -602,12 +602,10 @@ class StromAbrechnungCard extends HTMLElement {
       
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
-        // --- Netzbezug mit Winter-Profil-Faktor (inkl. Extrem-Modus 2.20) ---
         const isWinter = [10, 11, 0, 1].includes(cursorMonth); // Nov - Feb
         const kwhFactor = isWinter ? winterFactor : 0.75;
         estimatedRemainingKwh += (avgMonthlyKwh * kwhFactor);
 
-        // --- PV-Ertrag mit realistischer solarer Saisonalität ---
         let pvFactor = 1.0;
         if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       // Dez, Jan, Feb
         else if ([2, 10].includes(cursorMonth)) pvFactor = 0.6;     // März, Nov
@@ -636,7 +634,11 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
-      forecastText = `Vorauss. Netzbezug: <strong>${predictedTotalKwh.toFixed(0)} kWh</strong> | PV-Ertrag: <strong>${predictedTotalPvKwh.toFixed(0)} kWh</strong><br>` +
+      forecastText = `Restliche Monate (Prognose):<br>` +
+                     `• Netzbezug: <strong>+${estimatedRemainingKwh.toFixed(0)} kWh</strong><br>` +
+                     `• PV-Ertrag: <strong style="color: var(--success-color, #43a047);">+${estimatedRemainingPv.toFixed(0)} kWh</strong><br>` +
+                     `-----------------------------------<br>` +
+                     `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${predictedTotalPvKwh.toFixed(0)} kWh PV</strong><br>` +
                      `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
     }
 
