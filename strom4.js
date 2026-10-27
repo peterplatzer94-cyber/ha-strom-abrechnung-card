@@ -161,12 +161,12 @@ class StromAbrechnungCard extends HTMLElement {
           <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
         </div>
 
-        <!-- MONATE GRID (Volle Breite, große Eingabefelder) -->
+        <!-- MONATE GRID -->
         <div id="months_grid" style="display: flex; flex-direction: column; gap: 8px;"></div>
 
         <div style="height: 1px; background: var(--divider-color); margin: 16px 0;"></div>
 
-        <!-- GESAMTANZEIGE & PROGNOSE (Unten) -->
+        <!-- GESAMTANZEIGE & PROGNOSE -->
         <div style="background: var(--secondary-background-color); padding: 14px; border-radius: 10px; border: 1px solid var(--divider-color);">
           <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
             <span style="color: var(--secondary-text-color);">Bezahlte Abschläge:</span>
@@ -193,10 +193,10 @@ class StromAbrechnungCard extends HTMLElement {
             <strong id="balance_result" style="font-size: 1.15em;">0,00 €</strong>
           </div>
           
-          <!-- SAISONALE PROGNOSE BOX -->
+          <!-- REALISTISCHE SAISONALE PROGNOSE BOX -->
           <div id="forecast_box" style="margin-top: 12px; padding: 10px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1); border-radius: 8px; font-size: 0.85em; border: 1px solid var(--primary-color);">
             <div style="font-weight: 500; color: var(--primary-text-color); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-              <span>🔮 Jahresend-Prognose (Saisonal):</span>
+              <span>🔮 Realistische Jahresend-Prognose:</span>
             </div>
             <div id="forecast_text" style="color: var(--secondary-text-color);">Berechne Prognose...</div>
           </div>
@@ -204,7 +204,7 @@ class StromAbrechnungCard extends HTMLElement {
 
       </ha-card>
 
-      <!-- CSS für komfortabel breite Eingabefelder -->
+      <!-- CSS für komfortable Eingabefelder -->
       <style>
         .wide-input {
           width: 100%;
@@ -531,6 +531,7 @@ class StromAbrechnungCard extends HTMLElement {
     }
 
     let pastKwhTotal = 0;
+    let pastPvTotal = 0;
     let pastMonthsCount = activeLimit < 0 ? 0 : (activeLimit + 1);
 
     kwhInputs.forEach((input, index) => {
@@ -556,6 +557,9 @@ class StromAbrechnungCard extends HTMLElement {
         mPv = parseFloat(input.value) || 0;
       }
       totalPvKwh += mPv;
+      if (index <= activeLimit || !isCurrentYear) {
+        pastPvTotal += mPv;
+      }
     });
 
     const energyCost = totalKwh * pricePerKwh;
@@ -571,20 +575,41 @@ class StromAbrechnungCard extends HTMLElement {
     let forecastText = "Noch nicht genügend Daten für Prognose.";
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
       const avgMonthlyKwh = pastKwhTotal / pastMonthsCount;
+      const avgMonthlyPv = pastPvTotal / pastMonthsCount;
       const remainingMonths = 12 - pastMonthsCount;
+      
       let estimatedRemainingKwh = 0;
+      let estimatedRemainingPv = 0;
       
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
-        const isWinter = [10, 11, 0, 1].includes(cursorMonth);
-        const seasonalFactor = isWinter ? 1.45 : 0.75;
-        estimatedRemainingKwh += (avgMonthlyKwh * seasonalFactor);
+        // --- Netzbezug mit Winter-/Gaming-Faktor ---
+        const isWinter = [10, 11, 0, 1].includes(cursorMonth); // Nov - Feb
+        const kwhFactor = isWinter ? 1.45 : 0.75;
+        estimatedRemainingKwh += (avgMonthlyKwh * kwhFactor);
+
+        // --- PV-Ertrag mit realistischer solarer Saisonalität (Winter stark gedämpft, Sommer Peak) ---
+        // Statistischer PV-Faktor bezogen auf den Durchschnitt:
+        // Jan/Feb/Nov/Dez = ca. 0.2 (20%), Mär/Okt = ca. 0.8, Apr/Sep = ca. 1.3, Mai-Aug = ca. 1.7
+        let pvFactor = 1.0;
+        if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       // Dez, Jan, Feb (Tief)
+        else if ([2, 10].includes(cursorMonth)) pvFactor = 0.6;     // März, Nov
+        else if ([3, 9].includes(cursorMonth)) pvFactor = 1.1;      // April, Okt
+        else if ([4, 8].includes(cursorMonth)) pvFactor = 1.5;      // Mai, Sep
+        else if ([5, 6, 7].includes(cursorMonth)) pvFactor = 1.8;   // Jun, Jul, Aug (Sommer-Peak)
+
+        estimatedRemainingPv += (avgMonthlyPv * pvFactor);
+
         cursorMonth = (cursorMonth + 1) % 12;
       }
 
       const predictedTotalKwh = pastKwhTotal + estimatedRemainingKwh;
+      const predictedTotalPvKwh = pastPvTotal + estimatedRemainingPv;
+      
+      // Gesamtkosten = Netzstrom-Kosten (abzgl. PV-Ersparnis über gesamtes Jahr) + Grundgebühr
       const predictedEnergyCost = predictedTotalKwh * pricePerKwh;
-      const predictedTotalCost = predictedEnergyCost + totalAnnualFee;
+      const predictedPvSavings = predictedTotalPvKwh * pricePerKwh;
+      const predictedTotalCost = predictedEnergyCost + totalAnnualFee - predictedPvSavings;
       
       let totalAnnualPaid = 0;
       abschlagInputs.forEach(input => {
@@ -595,7 +620,7 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
-      forecastText = `Vorauss. Gesamtverbrauch: <strong>${predictedTotalKwh.toFixed(0)} kWh</strong><br>` +
+      forecastText = `Vorauss. Netzbezug: <strong>${predictedTotalKwh.toFixed(0)} kWh</strong> | PV-Ertrag: <strong>${predictedTotalPvKwh.toFixed(0)} kWh</strong><br>` +
                      `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
     }
 
