@@ -28,19 +28,40 @@ class StromAbrechnungCard extends HTMLElement {
     }
   }
 
-  // Hilfsfunktion: Berechnet das aktuelle Abrechnungsjahr (April bis März)
-  getActiveBillingYear() {
+  // Ermittelt das aktuell echte Abrechnungsjahr (April bis März)
+  getCurrentActiveBillingYear() {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth(); // 0 = Januar, 3 = April
-    
-    // Wenn wir vor April sind (Jan, Feb, Mar), gehört der April zum Startjahr im Vorjahr
     let startYear = (month < 3) ? year - 1 : year;
     return `${startYear}/${startYear + 1}`;
   }
 
+  // Holt das aktuell angezeigte Jahr (entweder das echte aktuelle oder das in den Einstellungen ausgewählte)
+  getActiveBillingYear() {
+    const savedViewYear = localStorage.getItem('strom_view_billing_year');
+    if (savedViewYear) {
+      return savedViewYear;
+    }
+    return this.getCurrentActiveBillingYear();
+  }
+
   render() {
     const activeYearStr = this.getActiveBillingYear();
+    const currentRealYearStr = this.getCurrentActiveBillingYear();
+
+    // Alle Jahre sammeln, für die bereits Daten im localStorage existieren (plus das aktuelle Jahr)
+    const availableYearsSet = new Set([currentRealYearStr]);
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('strom_abschlag_') || key.startsWith('strom_kwh_')) {
+        // Beispiel-Schlüssel: strom_abschlag_2026_2027_0 -> Jahr extrahieren
+        const parts = key.split('_');
+        if (parts.length >= 4) {
+          availableYearsSet.add(`${parts[2]}/${parts[3]}`);
+        }
+      }
+    });
+    const sortedYears = Array.from(availableYearsSet).sort().reverse();
 
     this.innerHTML = `
       <ha-card>
@@ -54,10 +75,17 @@ class StromAbrechnungCard extends HTMLElement {
           <!-- EINSTELLUNGS-MENÜ -->
           <div id="settings_panel" style="display: none; background: var(--secondary-background-color); padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid var(--divider-color);">
             <div style="font-weight: bold; margin-bottom: 10px; font-size: 0.95em; display: flex; justify-content: space-between; align-items: center;">
-              <span>⚙️ Karteneinstellungen</span>
+              <span>⚙️ Karteneinstellungen & Historie</span>
               <span id="close_settings" style="cursor: pointer; font-size: 1.1em;" title="Schließen">✕</span>
             </div>
             
+            <div style="margin-bottom: 8px;">
+              <label style="font-size: 0.8em; display: block; margin-bottom: 2px;">Abrechnungsjahr anzeigen:</label>
+              <select id="cfg_billing_year" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
+                ${sortedYears.map(y => `<option value="${y}" ${y === activeYearStr ? 'selected' : ''}>${y} ${y === currentRealYearStr ? '(Aktuell)' : ''}</option>`).join('')}
+              </select>
+            </div>
+
             <div style="margin-bottom: 8px;">
               <label style="font-size: 0.8em; display: block; margin-bottom: 2px;">Arbeitspreis (€ / kWh):</label>
               <input type="number" step="0.001" id="cfg_price" value="${this.config.price}" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
@@ -133,10 +161,12 @@ class StromAbrechnungCard extends HTMLElement {
 
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
+        const newYear = this.querySelector('#cfg_billing_year').value;
         const newPrice = parseFloat(this.querySelector('#cfg_price').value) || 0;
         const newBaseFee = parseFloat(this.querySelector('#cfg_base_fee').value) || 0;
         const newSensor = this.querySelector('#cfg_sensor').value.trim();
 
+        localStorage.setItem('strom_view_billing_year', newYear);
         localStorage.setItem('strom_config_price', newPrice);
         localStorage.setItem('strom_config_base_fee', newBaseFee);
         localStorage.setItem('strom_config_sensor', newSensor);
@@ -146,7 +176,7 @@ class StromAbrechnungCard extends HTMLElement {
         this.config.sensor = newSensor;
 
         settingsPanel.style.display = 'none';
-        this.calculateTotals();
+        this.render(); // Neu rendern, um das gewählte Jahr sofort anzuzeigen
       });
     }
 
@@ -163,16 +193,6 @@ class StromAbrechnungCard extends HTMLElement {
     const baseMonths = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
     const activeYearStr = this.getActiveBillingYear(); // z.B. "2026/2027"
     const startYear = parseInt(activeYearStr.split('/')[0]);
-
-    // Automatisches Aufräumen: Alte localStorage-Einträge von vorherigen Jahren löschen
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('strom_abschlag_') || key.startsWith('strom_kwh_')) {
-        const yearKeyPrefix = activeYearStr.replace('/', '_');
-        if (!key.includes(yearKeyPrefix)) {
-          localStorage.removeItem(key);
-        }
-      }
-    });
 
     // 12 Monate generieren (Startet immer im April des Startjahres)
     const months = [];
@@ -247,8 +267,13 @@ class StromAbrechnungCard extends HTMLElement {
     let currentMonthOffset = (currentYear - startYear) * 12 + currentMonthNum - 3;
     
     let activeLimit = 11;
-    if (currentMonthOffset < 0) activeLimit = -1;
-    else if (currentMonthOffset <= 11) activeLimit = currentMonthOffset;
+    if (activeYearStr !== this.getCurrentActiveBillingYear()) {
+      // Wenn ein vergangenes Jahr ausgewählt ist, sind alle 12 Monate abgeschlossen
+      activeLimit = 11;
+    } else {
+      if (currentMonthOffset < 0) activeLimit = -1;
+      else if (currentMonthOffset <= 11) activeLimit = currentMonthOffset;
+    }
 
     let totalPaid = 0;
     let totalKwh = 0;
@@ -264,20 +289,28 @@ class StromAbrechnungCard extends HTMLElement {
 
     let autoKwh = 0;
     const sensorId = this.config.sensor;
-    if (sensorId && this._hass.states[sensorId] && activeLimit >= 0 && activeLimit <= 11) {
+    const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
+    if (sensorId && this._hass.states[sensorId] && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
       autoKwh = parseFloat(this._hass.states[sensorId].state) || 0;
     }
 
     const autoDisplay = this.querySelector('#auto_kwh_display');
-    if (autoDisplay && activeLimit >= 0 && activeLimit <= 11) {
+    if (autoDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
       autoDisplay.innerText = `${autoKwh.toFixed(1)} kWh (Auto)`;
+    } else if (autoDisplay && !isCurrentYear) {
+      autoDisplay.removeAttribute('id'); // Kein Auto-Sensor für alte Jahre nötig
     }
 
     kwhInputs.forEach((input, index) => {
-      if (index < activeLimit) {
+      if (isCurrentYear) {
+        if (index < activeLimit) {
+          totalKwh += parseFloat(input.value) || 0;
+        } else if (index === activeLimit) {
+          totalKwh += autoKwh;
+        }
+      } else {
+        // Bei alten Jahren einfach alle manuell eingetragenen kWh zusammenzählen
         totalKwh += parseFloat(input.value) || 0;
-      } else if (index === activeLimit) {
-        totalKwh += autoKwh;
       }
     });
 
