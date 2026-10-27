@@ -10,7 +10,6 @@ class StromAbrechnungCard extends HTMLElement {
       default_abschlag: 238.45,
       ...config
     };
-    this.showSettings = false;
     this.requestUpdate();
   }
 
@@ -32,14 +31,14 @@ class StromAbrechnungCard extends HTMLElement {
   render() {
     this.innerHTML = `
       <ha-card>
-        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
           <span>⚡ Strom-Monatsbilanz</span>
-          <ha-icon-button id="settings_btn" icon="mdi:cog" style="cursor: pointer; color: var(--secondary-text-color);"></ha-icon-button>
+          <ha-button id="settings_toggle_btn" style="--mdc-theme-primary: var(--secondary-text-color);">⚙️ Einstellungen</ha-button>
         </div>
 
         <div class="card-content" style="padding: 16px;">
           
-          <!-- EINSTELLUNGS-MENÜ (Über das Zahnrad steuerbar) -->
+          <!-- EINSTELLUNGS-MENÜ -->
           <div id="settings_panel" style="display: none; background: var(--secondary-background-color); padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid var(--divider-color);">
             <div style="font-weight: bold; margin-bottom: 10px; font-size: 0.95em; display: flex; justify-content: space-between; align-items: center;">
               <span>⚙️ Karteneinstellungen</span>
@@ -61,7 +60,7 @@ class StromAbrechnungCard extends HTMLElement {
               <input type="text" id="cfg_sensor" value="${this.config.sensor}" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
             </div>
 
-            <button id="save_settings_btn" style="width: 100%; margin-top: 8px; padding: 6px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Speichern</button>
+            <button id="save_settings_btn" style="width: 100%; margin-top: 8px; padding: 6px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Speichern</button>
           </div>
 
           <!-- HAUPT-ANSICHT -->
@@ -111,7 +110,7 @@ class StromAbrechnungCard extends HTMLElement {
   }
 
   initSettingsPanel() {
-    const settingsBtn = this.querySelector('#settings_btn');
+    const settingsBtn = this.querySelector('#settings_toggle_btn');
     const settingsPanel = this.querySelector('#settings_panel');
     const closeSettings = this.querySelector('#close_settings');
     const saveBtn = this.querySelector('#save_settings_btn');
@@ -134,7 +133,6 @@ class StromAbrechnungCard extends HTMLElement {
         const newBaseFee = parseFloat(this.querySelector('#cfg_base_fee').value) || 0;
         const newSensor = this.querySelector('#cfg_sensor').value.trim();
 
-        // In localStorage speichern, damit es direkt übernommen wird
         localStorage.setItem('strom_config_price', newPrice);
         localStorage.setItem('strom_config_base_fee', newBaseFee);
         localStorage.setItem('strom_config_sensor', newSensor);
@@ -148,7 +146,6 @@ class StromAbrechnungCard extends HTMLElement {
       });
     }
 
-    // Gespeicherte Werte aus localStorage laden falls vorhanden
     const savedPrice = localStorage.getItem('strom_config_price');
     const savedBaseFee = localStorage.getItem('strom_config_base_fee');
     const savedSensor = localStorage.getItem('strom_config_sensor');
