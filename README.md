@@ -1,30 +1,49 @@
-⚡ Strom-Abrechnungskarte für Home Assistant (ha-strom-abrechnung-card)
+# ⚡ Strom- & PV-Abrechnungskarte für Home Assistant (`ha-strom-abrechnung-card`)
 
-Eine moderne, benutzerfreundliche Custom Lovelace Card für Home Assistant zur lückenlosen Verwaltung und Abrechnung deines Stromverbrauchs im jährlichen Abrechnungszyklus (April bis März).
-🚀 Features
+Eine moderne, hochflexible Custom Lovelace Card für Home Assistant zur lückenlosen Verwaltung, Abrechnung und visuellen Übersicht deines Stromverbrauchs sowie deines PV-Ertrags im individuellen Abrechnungsjahr.
 
-    Automatisches Abrechnungsjahr: Berechnet den Zyklus von April bis März vollautomatisch.
+---
 
-    Historie & Archiv: Zugriff auf vergangene Abrechnungsjahre direkt über das Einstellungs-Menü.
+## 🚀 Key Features
 
-    Automatische Erfassung: Liest den aktuellen Monatsverbrauch vollautomatisch aus einem Home-Assistant-Sensor aus (z. B. einem monatlichen Utility Meter oder Integral-Sensor).
+* **Flexibles Abrechnungsjahr:** Der Startmonat des Abrechnungsjahres (z. B. April bis März oder Januar bis Dezember) ist frei in den Karteneinstellungen wählbar.
+* **PV-Ertrags- & Ersparnis-Anzeige:** Erfassung deines PV-Ertrags/Eigenverbrauchs pro Monat inklusive automatischer Berechnung der Ersparnis (€) basierend auf deinem Arbeitspreis.
+* **Automatischer Monats-Import:** Liest den aktuellen Verbrauch (Netzbezug) und PV-Ertrag für den laufenden Monat automatisch aus Home-Assistant-Sensoren aus.
+* **Eigener Einstellungs-Dialog (Internal GUI):** Konfiguration von Arbeitspreis, Grundgebühr, Standard-Abschlag und Sensoren direkt über das Zahnrad-Menü (⚙️) der Karte – ganz ohne kompliziertes YAML.
+* **Abschlag auf alle Monate übernehmen:** Ein-Klick-Übernahme deines Standard-Abschlags auf alle 12 Monate des aktiven Abrechnungsjahres.
+* **Historie & Archiv:** Schnelles Umschalten zwischen vergangenen und aktuellen Abrechnungsjahren.
+* **JSON Import & Export:** Einfache Sicherung aller historischen kWh-, PV- und Abschlagsdaten zur Wiederherstellung oder Geräte-Synchronisation.
+* **Modernes Design:** Nahtlose Integration in Home-Assistant-Themes (Support für Dark & Light Mode), visuelle Hervorhebung des aktuellen Monats und farblich dynamische Bilanzanzeige (Plus/Minus).
 
-    Integriertes Einstellungs-Menü: Direkte Anpassung von Arbeitspreis, Grundgebühr und Sensor über ein sauberes Menü (⚙️) direkt in der Karte, ganz ohne kompliziertes YAML.
+---
 
-    Live-Bilanz: Automatische Gegenüberstellung von bezahlten Abschlägen und tatsächlichen Kosten (Arbeitspreis + anteilige Grundgebühr).
-    📋 Voraussetzungen (Sensor in Home Assistant)Damit die automatische kWh-Erfassung im laufenden Monat funktioniert, wird ein Sensor benötigt, der den monatlichen Verbrauch in kWh anzeigt (und sich idealerweise monatlich zurücksetzt):Erstelle in Home Assistant unter Einstellungen $\rightarrow$ Helfer einen Utility Meter (Dienstprogramm) mit monatlichem Zyklus (monthly), der deinen Zähler oder Integral-Sensor als Eingabe nutzt.Beispiel: sensor.smart_meter_stromverbrauch_monatlich
-    ⚙️ Installation & Konfiguration
-1. Über HACS (Empfohlen)
+## 📋 Voraussetzungen (Sensoren in Home Assistant)
 
-Füge dieses Repository als benutzerdefiniertes Repository in HACS hinzu und installiere die Karte.
-2. Dashboard-Konfiguration
+Damit die Karte den aktuellen Monatsverbrauch sowie den PV-Ertrag im laufenden Monat vollautomatisch auslesen kann, werden monatliche Zähler-Helfer (**Utility Meter / Dienstprogramm**) benötigt, die sich jeden Monat automatisch auf `0` zurücksetzen.
 
-Füge die Karte auf deinem Dashboard hinzu (entweder über den visuellen Editor oder manuell im YAML-Code):
+### 1. Netzbezug-Sensor anlegen:
+1. Gehe in Home Assistant auf **Einstellungen** ➔ **Geräte & Dienste** ➔ **Helfer** ➔ **+ Helfer erstellen**.
+2. Wähle **Dienstprogramm (Utility Meter)**.
+3. Vergib einen Namen (z. B. `Smart Meter Stromverbrauch Monatlich`).
+4. Wähle deinen Gesamtzähler / Integral-Sensor für Netzbezug als **Eingabesensor** und wähle den Zyklus **Monatlich**.
 
+### 2. PV-Ertrag-Sensor anlegen (Optional):
+1. Erstelle nach dem gleichen Prinzip einen zweiten **Utility Meter (Dienstprogramm)**.
+2. Wähle als **Eingabesensor** den Gesamtertrags- oder Eigenverbrauchs-Sensor deiner Solaranlage/Wechselrichter und den Zyklus **Monatlich** (z. B. `PV Ertrag Monatlich`).
+
+> **Hinweis bei neu angelegten Helfern:** Neu erstellte Utility Meter beginnen am Tag der Erstellung bei `0 kWh`. Für den bereits laufenden Monat kannst du den bisherigen Monats-Wert einfach manuell in die jeweilige Monatszeile der Karte eintragen. Ab dem Folgemonat läuft die Erfassung komplett automatisch.
+
+---
+
+## ⚙️ Installation & Konfiguration
+
+### 1. HACS (Empfohlen)
+1. Öffne **HACS** in Home Assistant.
+2. Füge dieses Repository als **Benutzerdefiniertes Repository** (Typ: *Lovelace / Dashboard*) hinzu.
+3. Installiere die **Strom- & PV-Abrechnungskarte** und lade dein Dashboard neu.
+
+### 2. Dashboard Hinzufügen (YAML)
+Füge die Karte auf deinem Dashboard hinzu:
+
+```yaml
 type: custom:strom-abrechnung-card
-
-3. Einstellungen in der Karte
-
-Klicke nach dem Hinzufügen auf der Karte oben rechts auf ⚙️ Einstellungen, um deinen monatlichen Sensor (z. B. sensor.smart_meter_stromverbrauch_monatlich), deinen Arbeitspreis (€/kWh) und deine jährliche Grundgebühr zu hinterlegen.
-
-Wenn du diesen Text in deine README.md auf GitHub packst, hat jeder (und du selbst bei einer Neuinstallation) sofort eine perfekte Anleitung parat!
