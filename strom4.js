@@ -101,7 +101,7 @@ class StromAbrechnungCard extends HTMLElement {
             <div>
               <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Jahr anzeigen:</label>
               <select id="cfg_billing_year" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-                ${sortedYears.map(y => `<option value="${y}" ${y === activeYearStr ? 'selected' : ''}>${y}${y === currentRealYearStr ? '(Aktuell)' : ''}</option>`).join('')}
+                ${sortedYears.map(y => `<option value="${y}" ${y === activeYearStr ? 'selected' : ''}>${y} ${y === currentRealYearStr ? '(Aktuell)' : ''}</option>`).join('')}
               </select>
             </div>
             <div>
@@ -413,3 +413,55 @@ class StromAbrechnungCard extends HTMLElement {
     });
 
     let autoKwh = 0;
+    const sensorId = localStorage.getItem('strom_config_sensor') || this.config.sensor;
+    const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
+    if (sensorId && this._hass.states[sensorId] && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      autoKwh = parseFloat(this._hass.states[sensorId].state) || 0;
+    }
+
+    const autoDisplay = this.querySelector('#auto_kwh_display');
+    if (autoDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      autoDisplay.innerText = `${autoKwh.toFixed(1)} kWh (Auto)`;
+    } else if (autoDisplay && !isCurrentYear) {
+      autoDisplay.removeAttribute('id');
+    }
+
+    kwhInputs.forEach((input, index) => {
+      if (isCurrentYear) {
+        if (index < activeLimit) {
+          totalKwh += parseFloat(input.value) || 0;
+        } else if (index === activeLimit) {
+          totalKwh += autoKwh;
+        }
+      } else {
+        totalKwh += parseFloat(input.value) || 0;
+      }
+    });
+
+    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
+    const energyCost = totalKwh * pricePerKwh;
+
+    const totalAnnualFee = parseFloat(localStorage.getItem('strom_config_base_fee')) || this.config.base_fee;
+    const monthlyFee = totalAnnualFee / 12;
+    const monthsCount = activeLimit < 0 ? 0 : (activeLimit + 1);
+    const proRataFee = monthlyFee * monthsCount;
+
+    const totalCost = energyCost + proRataFee;
+    const balance = totalPaid - totalCost;
+
+    if (this.querySelector('#total_paid')) {
+      this.querySelector('#total_paid').innerText = `${totalPaid.toFixed(2)} €`;
+      this.querySelector('#energy_cost').innerText = `${energyCost.toFixed(2)} € (${totalKwh.toFixed(1)} kWh)`;
+      this.querySelector('#fee_display').innerText = `${proRataFee.toFixed(2)} €`;
+      this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
+      
+      const balanceElem = this.querySelector('#balance_result');
+      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.toFixed(2)} €`;
+      balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
+    }
+  }
+
+  getCardSize() { return 12; }
+}
+
+customElements.define('strom-abrechnung-card', StromAbrechnungCard);
