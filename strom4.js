@@ -433,7 +433,7 @@ class StromAbrechnungCard extends HTMLElement {
       const savedPv = localStorage.getItem(`strom_pv_${yearKeyPrefix}_${index}`) ?? '';
 
       const isCurrentMonth = (index === currentMonthOffset);
-      const isFutureMonth = (index > currentMonthOffset && activeYearStr === this.getCurrentActiveBillingYear());
+      const isFutureOrEmpty = (index >= currentMonthOffset && activeYearStr === this.getCurrentActiveBillingYear() && !savedKwh);
 
       const rowBackground = isCurrentMonth ? 'var(--card-background-color)' : 'var(--secondary-background-color)';
       const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
@@ -444,14 +444,14 @@ class StromAbrechnungCard extends HTMLElement {
       let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh">`;
       if (isCurrentMonth) {
         kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.85em; font-weight: 600; text-align: right; padding: 8px 6px; color: var(--primary-color);">Lädt...</div>`;
-      } else if (isFutureMonth) {
+      } else if (isFutureOrEmpty && !savedKwh) {
         kwhFieldHtml = `<div class="forecast-kwh-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--secondary-text-color);">--</div>`;
       }
 
       let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh">`;
       if (isCurrentMonth) {
         pvFieldHtml = `<div id="auto_pv_display" style="font-size: 0.8em; font-weight: 600; text-align: right; padding: 8px 6px; color: var(--success-color, #43a047);">Lädt...</div>`;
-      } else if (isFutureMonth) {
+      } else if (isFutureOrEmpty && !savedPv) {
         pvFieldHtml = `<div class="forecast-pv-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--success-color, #43a047);">--</div>`;
       }
 
@@ -597,45 +597,57 @@ class StromAbrechnungCard extends HTMLElement {
 
     let forecastText = "Noch nicht genügend Daten für Prognose.";
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
-      // Mindest-Basis auf mindestens 450 kWh setzen, falls der bisherige Durchschnitt zu niedrig ist (wegen deines starken April)
       const calculatedAvg = pastKwhTotal / pastMonthsCount;
-      const baseAvgKwh = Math.max(calculatedAvg, 480); 
+      const baseAvgKwh = Math.max(calculatedAvg, 520); // Realistische Mindest-Basis für den Monat
       const baseAvgPv = pastPvTotal / pastMonthsCount;
       const remainingMonths = 12 - pastMonthsCount;
       
       const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
+
+      // --- Monats-Faktoren für Netzbezug (perfekt abgestimmt auf deine historischen Monate wie April mit ~600kWh) ---
+      const getMonthKwhFactor = (mIndex) => {
+        if ([11, 0, 1].includes(mIndex)) return winterFactor;     // Dez, Jan, Feb (Dein gewähltes Profil: Wenig, Mittel, Viel, Extrem)
+        if ([2, 3, 10].includes(mIndex)) return 1.2;              // März, April, Nov (Übergang / Hoher Start- und Endmonat)
+        if ([9].includes(mIndex)) return 1.1;                     // Oktober
+        if ([4, 8].includes(mIndex)) return 0.95;                   // Mai, September
+        return 0.75;                                              // Juni, Juli, August (Sommer-Tief)
+      };
+
+      const getMonthPvFactor = (mIndex) => {
+        if ([11, 0, 1].includes(mIndex)) return 0.2;              // Dez, Jan, Feb
+        if ([2, 10].includes(mIndex)) return 0.6;                 // März, Nov
+        if ([3, 9].includes(mIndex)) return 1.1;                  // April, Okt
+        if ([4, 8].includes(mIndex)) return 1.5;                  // Mai, Sep
+        return 1.8;                                               // Jun, Jul, Aug (Sommer-Peak)
+      };
+
+      // --- Schreibe Vorschau in ALLE 12 Monate der Tabelle ---
+      let tempCursorMonth = startMonth;
+      for (let i = 0; i < 12; i++) {
+        const kF = getMonthKwhFactor(tempCursorMonth);
+        const pF = getMonthPvFactor(tempCursorMonth);
+
+        const monthEstKwh = baseAvgKwh * kF;
+        const monthEstPv = Math.max(baseAvgPv, 150) * pF; // PV-Basis absichern
+
+        const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${i}"]`);
+        const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${i}"]`);
+        if (rowKwhDisp) rowKwhDisp.innerText = `~${monthEstKwh.toFixed(0)} kWh`;
+        if (rowPvDisp) rowPvDisp.innerText = `~${monthEstPv.toFixed(0)} kWh`;
+
+        tempCursorMonth = (tempCursorMonth + 1) % 12;
+      }
 
       let estimatedRemainingKwh = 0;
       let estimatedRemainingPv = 0;
       
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
-        const targetIndex = pastMonthsCount + r;
+        const kF = getMonthKwhFactor(cursorMonth);
+        const pF = getMonthPvFactor(cursorMonth);
 
-        // Monats-Faktoren (April = Startmonat, hat oft durch Übergang/Heizung noch höhere Werte ~1.2)
-        let kwhFactor = 1.0;
-        if ([11, 0, 1].includes(cursorMonth)) kwhFactor = winterFactor;       // Dez, Jan, Feb
-        else if ([2, 3, 9, 10].includes(cursorMonth)) kwhFactor = 1.25;      // März, April, Okt, Nov (höherer Übergang)
-        else if ([4, 8].includes(cursorMonth)) kwhFactor = 0.95;             // Mai, Sep
-        else if ([5, 6, 7].includes(cursorMonth)) kwhFactor = 0.75;          // Jun, Jul, Aug
-
-        const monthEstKwh = baseAvgKwh * kwhFactor;
-        estimatedRemainingKwh += monthEstKwh;
-
-        let pvFactor = 1.0;
-        if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       
-        else if ([2, 10].includes(cursorMonth)) pvFactor = 0.6;     
-        else if ([3, 9].includes(cursorMonth)) pvFactor = 1.1;      
-        else if ([4, 8].includes(cursorMonth)) pvFactor = 1.5;      
-        else if ([5, 6, 7].includes(cursorMonth)) pvFactor = 1.8;   
-
-        const monthEstPv = baseAvgPv * pvFactor;
-        estimatedRemainingPv += monthEstPv;
-
-        const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${targetIndex}"]`);
-        const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${targetIndex}"]`);
-        if (rowKwhDisp) rowKwhDisp.innerText = `~${monthEstKwh.toFixed(0)} kWh`;
-        if (rowPvDisp) rowPvDisp.innerText = `~${monthEstPv.toFixed(0)} kWh`;
+        estimatedRemainingKwh += (baseAvgKwh * kF);
+        estimatedRemainingPv += (Math.max(baseAvgPv, 150) * pF);
 
         cursorMonth = (cursorMonth + 1) % 12;
       }
