@@ -121,18 +121,4 @@ class StromAbrechnungCard extends HTMLElement {
 
     months.forEach((mObj, index) => {
       const yearKeyPrefix = yearSelect.value.replace('/', '_');
-      const savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`) ?? defaultAbschlag;
-      const savedKwh = localStorage.getItem(`strom_kwh_${yearKeyPrefix}_${index}`) ?? '0';
-
-      const div = document.createElement('div');
-      div.style.cssText = "display: flex; align-items: center; justify-content: space-between; background: var(--secondary-background-color); padding: 8px; border-radius: 6px; gap: 8px;";
-      
-      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right;">`;
-      if (index === currentMonthOffset) {
-        kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.85em; font-weight: bold; text-align: right; padding: 6px; color: var(--primary-text-color);">Lädt...</div>`;
-      }
-
-      div.innerHTML = `
-        <div style="font-size: 0.85em; font-weight: bold; width: 110px;">${mObj.name}</div>
-        <div style="flex: 1;" title="Verbrauch in kWh">${kwhFieldHtml}</div>
-        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input" data
+      const savedAbschlag = localStorage.getItem(`strom_absch
