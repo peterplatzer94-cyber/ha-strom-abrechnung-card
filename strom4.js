@@ -597,8 +597,8 @@ class StromAbrechnungCard extends HTMLElement {
 
     let forecastText = "Noch nicht genügend Daten für Prognose.";
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
-      const avgMonthlyKwh = pastKwhTotal / pastMonthsCount;
-      const avgMonthlyPv = pastPvTotal / pastMonthsCount;
+      const baseAvgKwh = pastKwhTotal / pastMonthsCount;
+      const baseAvgPv = pastPvTotal / pastMonthsCount;
       const remainingMonths = 12 - pastMonthsCount;
       
       const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
@@ -609,19 +609,26 @@ class StromAbrechnungCard extends HTMLElement {
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
         const targetIndex = pastMonthsCount + r;
-        const isWinter = [10, 11, 0, 1].includes(cursorMonth); // Nov - Feb
-        const kwhFactor = isWinter ? winterFactor : 0.75;
-        const monthEstKwh = avgMonthlyKwh * kwhFactor;
+
+        // --- Realistische monatliche Saisonalität für Netzbezug statt blindem Durchschnitt ---
+        let kwhFactor = 1.0;
+        if ([11, 0, 1].includes(cursorMonth)) kwhFactor = winterFactor;       // Dez, Jan, Feb (Winter / Profil)
+        else if ([2, 9, 10].includes(cursorMonth)) kwhFactor = 1.1;           // März, Okt, Nov (Übergang)
+        else if ([3, 8].includes(cursorMonth)) kwhFactor = 0.9;               // April, Sep
+        else if ([4, 5, 6, 7].includes(cursorMonth)) kwhFactor = 0.75;        // Mai - Aug (Sommer-Tief)
+
+        const monthEstKwh = baseAvgKwh * kwhFactor;
         estimatedRemainingKwh += monthEstKwh;
 
+        // --- Realistische monatliche Saisonalität für PV ---
         let pvFactor = 1.0;
-        if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       
-        else if ([2, 10].includes(cursorMonth)) pvFactor = 0.6;     
-        else if ([3, 9].includes(cursorMonth)) pvFactor = 1.1;      
-        else if ([4, 8].includes(cursorMonth)) pvFactor = 1.5;      
-        else if ([5, 6, 7].includes(cursorMonth)) pvFactor = 1.8;   
+        if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       // Dez, Jan, Feb
+        else if ([2, 10].includes(cursorMonth)) pvFactor = 0.6;     // März, Nov
+        else if ([3, 9].includes(cursorMonth)) pvFactor = 1.1;      // April, Okt
+        else if ([4, 8].includes(cursorMonth)) pvFactor = 1.5;      // Mai, Sep
+        else if ([5, 6, 7].includes(cursorMonth)) pvFactor = 1.8;   // Jun, Jul, Aug
 
-        const monthEstPv = avgMonthlyPv * pvFactor;
+        const monthEstPv = baseAvgPv * pvFactor;
         estimatedRemainingPv += monthEstPv;
 
         // --- Direkt in die jeweilige Monatszeile schreiben ---
