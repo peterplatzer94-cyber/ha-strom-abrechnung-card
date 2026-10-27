@@ -5,6 +5,7 @@ class StromAbrechnungCard extends HTMLElement {
     }
     this.config = {
       sensor: "sensor.smart_meter_netzbezug_monatlich",
+      pv_sensor: "",
       price: 0.32,
       base_fee: 146.72,
       default_abschlag: 238.45,
@@ -57,7 +58,7 @@ class StromAbrechnungCard extends HTMLElement {
 
     const availableYearsSet = new Set([currentRealYearStr]);
     Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('strom_abschlag_') || key.startsWith('strom_kwh_')) {
+      if (key.startsWith('strom_abschlag_') || key.startsWith('strom_kwh_') || key.startsWith('strom_pv_')) {
         const parts = key.split('_');
         if (parts.length >= 4) {
           availableYearsSet.add(`${parts[2]}/${parts[3]}`);
@@ -67,6 +68,7 @@ class StromAbrechnungCard extends HTMLElement {
     const sortedYears = Array.from(availableYearsSet).sort().reverse();
 
     const currentSensor = localStorage.getItem('strom_config_sensor') || this.config.sensor;
+    const currentPvSensor = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
     const currentPrice = localStorage.getItem('strom_config_price') ?? this.config.price;
     const currentBaseFee = localStorage.getItem('strom_config_base_fee') ?? this.config.base_fee;
     const currentDefaultAbschlag = localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag;
@@ -83,7 +85,7 @@ class StromAbrechnungCard extends HTMLElement {
               ⚡
             </div>
             <div>
-              <div style="font-size: 1.1em; font-weight: 500; color: var(--primary-text-color);">Strom-Monatsbilanz</div>
+              <div style="font-size: 1.1em; font-weight: 500; color: var(--primary-text-color);">Strom- & PV-Bilanz</div>
               <div style="font-size: 0.8em; color: var(--secondary-text-color);">Abrechnungsjahr: ${activeYearStr}</div>
             </div>
           </div>
@@ -93,7 +95,7 @@ class StromAbrechnungCard extends HTMLElement {
         <!-- EINSTELLUNGS-MENÜ -->
         <div id="settings_panel" style="display: none; background: var(--secondary-background-color); padding: 16px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--divider-color);">
           <div style="font-weight: 500; margin-bottom: 12px; font-size: 0.95em; display: flex; justify-content: space-between; align-items: center; color: var(--primary-text-color);">
-            <span>⚙️ Karteneinstellungen & Backup</span>
+            <span>⚙️ Karteneinstellungen & PV</span>
             <span id="close_settings" style="cursor: pointer; font-size: 1.2em; padding: 0 4px;" title="Schließen">✕</span>
           </div>
           
@@ -131,15 +133,14 @@ class StromAbrechnungCard extends HTMLElement {
             </div>
           </div>
 
-          <div style="margin-bottom: 12px;">
+          <div style="margin-bottom: 10px;">
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Netzbezug-Sensor (Monatlicher Verbrauch):</label>
             <ha-entity-picker id="cfg_sensor_picker" value="${currentSensor}" style="width: 100%; display: block;"></ha-entity-picker>
           </div>
 
-          <div style="display: flex; gap: 8px; margin-top: 12px;">
-            <button id="export_btn" type="button" style="flex: 1; padding: 8px; background: var(--card-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em;">📥 Export</button>
-            <button id="import_btn" type="button" style="flex: 1; padding: 8px; background: var(--card-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em;">📤 Import</button>
-            <input type="file" id="import_file_input" style="display: none;" accept=".json">
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">PV-Ertrag / Eigenverbrauch-Sensor (Monatlich):</label>
+            <ha-entity-picker id="cfg_pv_sensor_picker" value="${currentPvSensor}" style="width: 100%; display: block;"></ha-entity-picker>
           </div>
 
           <button id="save_settings_btn" style="width: 100%; margin-top: 12px; padding: 10px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Speichern & Anwenden</button>
@@ -147,8 +148,9 @@ class StromAbrechnungCard extends HTMLElement {
 
         <!-- TABELLEN-KOPF -->
         <div style="display: flex; justify-content: space-between; padding: 0 6px 6px 6px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-          <span style="width: 110px;">Monat</span>
-          <span style="flex: 1; text-align: right;">Verbrauch (kWh)</span>
+          <span style="width: 95px;">Monat</span>
+          <span style="flex: 1; text-align: right;">Netz (kWh)</span>
+          <span style="flex: 1; text-align: right;">PV (kWh / €)</span>
           <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
         </div>
 
@@ -157,15 +159,19 @@ class StromAbrechnungCard extends HTMLElement {
 
         <div style="height: 1px; background: var(--divider-color); margin: 16px 0;"></div>
 
-        <!-- GESAMTANZEIGE (MODERN CARD) -->
+        <!-- GESAMTANZEIGE -->
         <div style="background: var(--secondary-background-color); padding: 14px; border-radius: 10px; border: 1px solid var(--divider-color);">
           <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
             <span style="color: var(--secondary-text-color);">Bezahlte Abschläge:</span>
             <strong id="total_paid" style="color: var(--primary-text-color);">0,00 €</strong>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
-            <span style="color: var(--secondary-text-color);">Stromkosten (kWh):</span>
+            <span style="color: var(--secondary-text-color);">Stromkosten (Netz kWh):</span>
             <strong id="energy_cost" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">PV-Ersparnis gesamt:</span>
+            <strong id="total_pv_savings" style="color: var(--success-color, #43a047);">0,00 €</strong>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
             <span style="color: var(--secondary-text-color);">Grundgebühr (Anteilig):</span>
@@ -186,9 +192,10 @@ class StromAbrechnungCard extends HTMLElement {
     this.content = true;
 
     const sensorPicker = this.querySelector('#cfg_sensor_picker');
-    if (sensorPicker && this._hass) {
-      sensorPicker.hass = this._hass;
-    }
+    if (sensorPicker && this._hass) sensorPicker.hass = this._hass;
+
+    const pvSensorPicker = this.querySelector('#cfg_pv_sensor_picker');
+    if (pvSensorPicker && this._hass) pvSensorPicker.hass = this._hass;
 
     this.initCard();
     this.initSettingsPanel();
@@ -200,9 +207,6 @@ class StromAbrechnungCard extends HTMLElement {
     const closeSettings = this.querySelector('#close_settings');
     const saveBtn = this.querySelector('#save_settings_btn');
     const applyAllBtn = this.querySelector('#apply_all_abschlag');
-    const exportBtn = this.querySelector('#export_btn');
-    const importBtn = this.querySelector('#import_btn');
-    const fileInput = this.querySelector('#import_file_input');
 
     if (settingsBtn && settingsPanel) {
       settingsBtn.addEventListener('click', () => {
@@ -228,48 +232,6 @@ class StromAbrechnungCard extends HTMLElement {
       });
     }
 
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => {
-        const data = {};
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key.startsWith('strom_')) {
-            data[key] = localStorage.getItem(key);
-          }
-        }
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `strom_backup_${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      });
-    }
-
-    if (importBtn && fileInput) {
-      importBtn.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const data = JSON.parse(event.target.result);
-            Object.keys(data).forEach(key => {
-              if (key.startsWith('strom_')) {
-                localStorage.setItem(key, data[key]);
-              }
-            });
-            this.render();
-          } catch (err) {
-            alert('Fehler beim Lesen der Backup-Datei.');
-          }
-        };
-        reader.readAsText(file);
-      });
-    }
-
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
         const newYear = this.querySelector('#cfg_billing_year').value;
@@ -281,17 +243,22 @@ class StromAbrechnungCard extends HTMLElement {
         const sensorPicker = this.querySelector('#cfg_sensor_picker');
         const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
 
+        const pvSensorPicker = this.querySelector('#cfg_pv_sensor_picker');
+        const newPvSensor = pvSensorPicker ? pvSensorPicker.value : this.config.pv_sensor;
+
         localStorage.setItem('strom_config_start_month', newStartMonth);
         localStorage.setItem('strom_view_billing_year', newYear);
         localStorage.setItem('strom_config_price', newPrice);
         localStorage.setItem('strom_config_base_fee', newBaseFee);
         localStorage.setItem('strom_config_default_abschlag', newDefaultAbschlag);
         localStorage.setItem('strom_config_sensor', newSensor);
+        localStorage.setItem('strom_config_pv_sensor', newPvSensor);
 
         this.config.price = newPrice;
         this.config.base_fee = newBaseFee;
         this.config.default_abschlag = newDefaultAbschlag;
         this.config.sensor = newSensor;
+        this.config.pv_sensor = newPvSensor;
 
         settingsPanel.style.display = 'none';
         this.render();
@@ -302,11 +269,13 @@ class StromAbrechnungCard extends HTMLElement {
     const savedBaseFee = localStorage.getItem('strom_config_base_fee');
     const savedAbschlag = localStorage.getItem('strom_config_default_abschlag');
     const savedSensor = localStorage.getItem('strom_config_sensor');
+    const savedPvSensor = localStorage.getItem('strom_config_pv_sensor');
 
     if (savedPrice !== null) this.config.price = parseFloat(savedPrice);
     if (savedBaseFee !== null) this.config.base_fee = parseFloat(savedBaseFee);
     if (savedAbschlag !== null) this.config.default_abschlag = parseFloat(savedAbschlag);
     if (savedSensor) this.config.sensor = savedSensor;
+    if (savedPvSensor) this.config.pv_sensor = savedPvSensor;
   }
 
   initCard() {
@@ -340,23 +309,30 @@ class StromAbrechnungCard extends HTMLElement {
       const yearKeyPrefix = activeYearStr.replace('/', '_');
       const savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`) ?? defaultAbschlag;
       const savedKwh = localStorage.getItem(`strom_kwh_${yearKeyPrefix}_${index}`) ?? '0';
+      const savedPv = localStorage.getItem(`strom_pv_${yearKeyPrefix}_${index}`) ?? '0';
 
       const isCurrentMonth = (index === currentMonthOffset);
       const rowBackground = isCurrentMonth ? 'var(--card-background-color)' : 'var(--secondary-background-color)';
       const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
 
       const div = document.createElement('div');
-      div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 6px 10px; border-radius: 8px; gap: 8px; border: ${rowBorder};`;
+      div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 6px 8px; border-radius: 8px; gap: 6px; border: ${rowBorder};`;
       
-      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.9em;">`;
+      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;">`;
       if (isCurrentMonth) {
-        kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.85em; font-weight: 500; text-align: right; padding: 6px; color: var(--primary-color);">Lädt...</div>`;
+        kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 6px; color: var(--primary-color);">Lädt...</div>`;
+      }
+
+      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;">`;
+      if (isCurrentMonth) {
+        pvFieldHtml = `<div id="auto_pv_display" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 6px; color: var(--success-color, #43a047);">Lädt...</div>`;
       }
 
       div.innerHTML = `
-        <div style="font-size: 0.85em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 110px; color: var(--primary-text-color);">${mObj.name}</div>
-        <div style="flex: 1;" title="Verbrauch in kWh">${kwhFieldHtml}</div>
-        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input" data-index="${index}" value="${savedAbschlag}" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.9em;"></div>
+        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
+        <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
+        <div style="flex: 1;" title="PV-Ertrag / Ersparnis">${pvFieldHtml}</div>
+        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input" data-index="${index}" value="${savedAbschlag}" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;"></div>
       `;
       grid.appendChild(div);
     });
@@ -373,6 +349,14 @@ class StromAbrechnungCard extends HTMLElement {
       input.addEventListener('input', (e) => {
         const yearKeyPrefix = activeYearStr.replace('/', '_');
         localStorage.setItem(`strom_kwh_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.querySelectorAll('.pv-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_pv_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
         this.calculateTotals();
       });
     });
@@ -402,9 +386,11 @@ class StromAbrechnungCard extends HTMLElement {
 
     let totalPaid = 0;
     let totalKwh = 0;
+    let totalPvKwh = 0;
 
     const abschlagInputs = this.querySelectorAll('.month-input');
     const kwhInputs = this.querySelectorAll('.kwh-input');
+    const pvInputs = this.querySelectorAll('.pv-input');
     
     abschlagInputs.forEach((input, index) => {
       if (index <= activeLimit) {
@@ -419,11 +405,27 @@ class StromAbrechnungCard extends HTMLElement {
       autoKwh = parseFloat(this._hass.states[sensorId].state) || 0;
     }
 
+    let autoPv = 0;
+    const pvSensorId = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
+    if (pvSensorId && this._hass.states[pvSensorId] && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      autoPv = parseFloat(this._hass.states[pvSensorId].state) || 0;
+    }
+
     const autoDisplay = this.querySelector('#auto_kwh_display');
     if (autoDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
-      autoDisplay.innerText = `${autoKwh.toFixed(1)} kWh (Auto)`;
+      autoDisplay.innerText = `${autoKwh.toFixed(1)} kWh`;
     } else if (autoDisplay && !isCurrentYear) {
       autoDisplay.removeAttribute('id');
+    }
+
+    const autoPvDisplay = this.querySelector('#auto_pv_display');
+    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
+
+    if (autoPvDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      const euroVal = autoPv * pricePerKwh;
+      autoPvDisplay.innerText = `${autoPv.toFixed(1)} kWh (${euroVal.toFixed(1)} €)`;
+    } else if (autoPvDisplay && !isCurrentYear) {
+      autoPvDisplay.removeAttribute('id');
     }
 
     kwhInputs.forEach((input, index) => {
@@ -438,8 +440,20 @@ class StromAbrechnungCard extends HTMLElement {
       }
     });
 
-    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
+    pvInputs.forEach((input, index) => {
+      if (isCurrentYear) {
+        if (index < activeLimit) {
+          totalPvKwh += parseFloat(input.value) || 0;
+        } else if (index === activeLimit) {
+          totalPvKwh += autoPv;
+        }
+      } else {
+        totalPvKwh += parseFloat(input.value) || 0;
+      }
+    });
+
     const energyCost = totalKwh * pricePerKwh;
+    const totalPvSavings = totalPvKwh * pricePerKwh;
 
     const totalAnnualFee = parseFloat(localStorage.getItem('strom_config_base_fee')) || this.config.base_fee;
     const monthlyFee = totalAnnualFee / 12;
@@ -452,6 +466,7 @@ class StromAbrechnungCard extends HTMLElement {
     if (this.querySelector('#total_paid')) {
       this.querySelector('#total_paid').innerText = `${totalPaid.toFixed(2)} €`;
       this.querySelector('#energy_cost').innerText = `${energyCost.toFixed(2)} € (${totalKwh.toFixed(1)} kWh)`;
+      this.querySelector('#total_pv_savings').innerText = `+${totalPvSavings.toFixed(2)} € (${totalPvKwh.toFixed(1)} kWh)`;
       this.querySelector('#fee_display').innerText = `${proRataFee.toFixed(2)} €`;
       this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
       
