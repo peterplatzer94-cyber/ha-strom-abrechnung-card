@@ -153,13 +153,13 @@ class StromAbrechnungCard extends HTMLElement {
           <button id="save_settings_btn" style="width: 100%; padding: 10px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Speichern & Anwenden</button>
         </div>
 
-        <!-- HAUPT-LAYOUT (2 SPALTEN AB TABLET/PC) -->
+        <!-- HAUPT-LAYOUT (1 Spalte auf Handy, breit optimierte 2 Spalten auf PC) -->
         <div class="card-grid-layout" style="display: grid; grid-template-columns: 1fr; gap: 16px;">
           
-          <!-- LINKE SPALTE: MONATE -->
+          <!-- LINKE SPALTE: MONATE (Bekommt nun extra viel Platz) -->
           <div>
             <div style="display: flex; justify-content: space-between; padding: 0 8px 6px 8px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-              <span style="width: 85px;">Monat</span>
+              <span style="width: 95px;">Monat</span>
               <span style="flex: 1; text-align: right;">Netz (kWh)</span>
               <span style="flex: 1; text-align: right;">PV (kWh)</span>
               <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
@@ -217,7 +217,7 @@ class StromAbrechnungCard extends HTMLElement {
 
       </ha-card>
 
-      <!-- CSS für responsives Grid und verbreiterte Eingabefelder -->
+      <!-- CSS: Linke Spalte bekommt nun 1.6 Teile, rechte Spalte 1 Teil (viel mehr Platz für die Tabelle!) -->
       <style>
         .wide-input {
           width: 100%;
@@ -231,9 +231,9 @@ class StromAbrechnungCard extends HTMLElement {
           text-align: right;
           box-sizing: border-box;
         }
-        @media (min-width: 768px) {
+        @media (min-width: 900px) {
           .card-grid-layout {
-            grid-template-columns: 1.4fr 1fr !important;
+            grid-template-columns: 1.6fr 1fr !important;
           }
         }
       </style>
@@ -447,7 +447,7 @@ class StromAbrechnungCard extends HTMLElement {
       }
 
       div.innerHTML = `
-        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 85px; color: var(--primary-text-color);">${mObj.name}</div>
+        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
         <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
         <div style="flex: 1;" title="PV-Ertrag in kWh">${pvFieldHtml}</div>
         <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input wide-input" data-index="${index}" value="${savedAbschlag}"></div>
