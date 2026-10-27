@@ -9,6 +9,7 @@ class StromAbrechnungCard extends HTMLElement {
       price: 0.32,
       base_fee: 146.72,
       default_abschlag: 238.45,
+      winter_profile: "1.45", // Standard: Mittel
       ...config
     };
     this.requestUpdate();
@@ -72,6 +73,7 @@ class StromAbrechnungCard extends HTMLElement {
     const currentPrice = localStorage.getItem('strom_config_price') ?? this.config.price;
     const currentBaseFee = localStorage.getItem('strom_config_base_fee') ?? this.config.base_fee;
     const currentDefaultAbschlag = localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag;
+    const currentWinterProfile = localStorage.getItem('strom_config_winter_profile') ?? this.config.winter_profile;
 
     const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
@@ -134,6 +136,15 @@ class StromAbrechnungCard extends HTMLElement {
           </div>
 
           <div style="margin-bottom: 10px;">
+            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Verbrauchsprofil (Prognose-Faktor Nov–Feb):</label>
+            <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
+              <option value="1.15" ${currentWinterProfile === "1.15" ? 'selected' : ''}>Wenig Mehrverbrauch im Winter (Faktor 1.15)</option>
+              <option value="1.45" ${currentWinterProfile === "1.45" ? 'selected' : ''}>Mittel / Normal (Faktor 1.45)</option>
+              <option value="1.80" ${currentWinterProfile === "1.80" ? 'selected' : ''}>Viel / Gaming & Heizen (Faktor 1.80)</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 10px;">
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Netzbezug-Sensor (Monatlicher Verbrauch):</label>
             <ha-entity-picker id="cfg_sensor_picker" value="${currentSensor}" style="width: 100%; display: block;"></ha-entity-picker>
           </div>
@@ -193,7 +204,7 @@ class StromAbrechnungCard extends HTMLElement {
             <strong id="balance_result" style="font-size: 1.15em;">0,00 €</strong>
           </div>
           
-          <!-- REALISTISCHE SAISONALE PROGNOSE BOX -->
+          <!-- PROGNOSE BOX -->
           <div id="forecast_box" style="margin-top: 12px; padding: 10px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1); border-radius: 8px; font-size: 0.85em; border: 1px solid var(--primary-color);">
             <div style="font-weight: 500; color: var(--primary-text-color); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
               <span>🔮 Realistische Jahresend-Prognose:</span>
@@ -339,6 +350,7 @@ class StromAbrechnungCard extends HTMLElement {
         const newPrice = parseFloat(this.querySelector('#cfg_price').value) || 0;
         const newBaseFee = parseFloat(this.querySelector('#cfg_base_fee').value) || 0;
         const newDefaultAbschlag = parseFloat(this.querySelector('#cfg_default_abschlag').value) || 0;
+        const newWinterProfile = this.querySelector('#cfg_winter_profile').value;
         
         const sensorPicker = this.querySelector('#cfg_sensor_picker');
         const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
@@ -351,12 +363,14 @@ class StromAbrechnungCard extends HTMLElement {
         localStorage.setItem('strom_config_price', newPrice);
         localStorage.setItem('strom_config_base_fee', newBaseFee);
         localStorage.setItem('strom_config_default_abschlag', newDefaultAbschlag);
+        localStorage.setItem('strom_config_winter_profile', newWinterProfile);
         localStorage.setItem('strom_config_sensor', newSensor);
         localStorage.setItem('strom_config_pv_sensor', newPvSensor);
 
         this.config.price = newPrice;
         this.config.base_fee = newBaseFee;
         this.config.default_abschlag = newDefaultAbschlag;
+        this.config.winter_profile = newWinterProfile;
         this.config.sensor = newSensor;
         this.config.pv_sensor = newPvSensor;
 
@@ -368,12 +382,14 @@ class StromAbrechnungCard extends HTMLElement {
     const savedPrice = localStorage.getItem('strom_config_price');
     const savedBaseFee = localStorage.getItem('strom_config_base_fee');
     const savedAbschlag = localStorage.getItem('strom_config_default_abschlag');
+    const savedWinterProfile = localStorage.getItem('strom_config_winter_profile');
     const savedSensor = localStorage.getItem('strom_config_sensor');
     const savedPvSensor = localStorage.getItem('strom_config_pv_sensor');
 
     if (savedPrice !== null) this.config.price = parseFloat(savedPrice);
     if (savedBaseFee !== null) this.config.base_fee = parseFloat(savedBaseFee);
     if (savedAbschlag !== null) this.config.default_abschlag = parseFloat(savedAbschlag);
+    if (savedWinterProfile !== null) this.config.winter_profile = savedWinterProfile;
     if (savedSensor) this.config.sensor = savedSensor;
     if (savedPvSensor) this.config.pv_sensor = savedPvSensor;
   }
@@ -578,25 +594,25 @@ class StromAbrechnungCard extends HTMLElement {
       const avgMonthlyPv = pastPvTotal / pastMonthsCount;
       const remainingMonths = 12 - pastMonthsCount;
       
+      const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
+
       let estimatedRemainingKwh = 0;
       let estimatedRemainingPv = 0;
       
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
-        // --- Netzbezug mit Winter-/Gaming-Faktor ---
+        // --- Netzbezug mit individuellem Winter-Profil-Faktor ---
         const isWinter = [10, 11, 0, 1].includes(cursorMonth); // Nov - Feb
-        const kwhFactor = isWinter ? 1.45 : 0.75;
+        const kwhFactor = isWinter ? winterFactor : 0.75;
         estimatedRemainingKwh += (avgMonthlyKwh * kwhFactor);
 
-        // --- PV-Ertrag mit realistischer solarer Saisonalität (Winter stark gedämpft, Sommer Peak) ---
-        // Statistischer PV-Faktor bezogen auf den Durchschnitt:
-        // Jan/Feb/Nov/Dez = ca. 0.2 (20%), Mär/Okt = ca. 0.8, Apr/Sep = ca. 1.3, Mai-Aug = ca. 1.7
+        // --- PV-Ertrag mit realistischer solarer Saisonalität ---
         let pvFactor = 1.0;
-        if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       // Dez, Jan, Feb (Tief)
+        if ([11, 0, 1].includes(cursorMonth)) pvFactor = 0.2;       // Dez, Jan, Feb
         else if ([2, 10].includes(cursorMonth)) pvFactor = 0.6;     // März, Nov
         else if ([3, 9].includes(cursorMonth)) pvFactor = 1.1;      // April, Okt
         else if ([4, 8].includes(cursorMonth)) pvFactor = 1.5;      // Mai, Sep
-        else if ([5, 6, 7].includes(cursorMonth)) pvFactor = 1.8;   // Jun, Jul, Aug (Sommer-Peak)
+        else if ([5, 6, 7].includes(cursorMonth)) pvFactor = 1.8;   // Jun, Jul, Aug
 
         estimatedRemainingPv += (avgMonthlyPv * pvFactor);
 
@@ -606,7 +622,6 @@ class StromAbrechnungCard extends HTMLElement {
       const predictedTotalKwh = pastKwhTotal + estimatedRemainingKwh;
       const predictedTotalPvKwh = pastPvTotal + estimatedRemainingPv;
       
-      // Gesamtkosten = Netzstrom-Kosten (abzgl. PV-Ersparnis über gesamtes Jahr) + Grundgebühr
       const predictedEnergyCost = predictedTotalKwh * pricePerKwh;
       const predictedPvSavings = predictedTotalPvKwh * pricePerKwh;
       const predictedTotalCost = predictedEnergyCost + totalAnnualFee - predictedPvSavings;
