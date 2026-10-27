@@ -164,10 +164,9 @@ class StromAbrechnungCard extends HTMLElement {
     const activeYearStr = this.getActiveBillingYear(); // z.B. "2026/2027"
     const startYear = parseInt(activeYearStr.split('/')[0]);
 
-    // 1. Automatisches Aufräumen: Alte localStorage-Einträge von vorherigen Jahren löschen, um den Speicher sauber zu halten
+    // Automatisches Aufräumen: Alte localStorage-Einträge von vorherigen Jahren löschen
     Object.keys(localStorage).forEach(key => {
       if (key.startsWith('strom_abschlag_') || key.startsWith('strom_kwh_')) {
-        // Prüfen, ob der Schlüssel nicht zum aktuellen Abrechnungsjahr gehört
         const yearKeyPrefix = activeYearStr.replace('/', '_');
         if (!key.includes(yearKeyPrefix)) {
           localStorage.removeItem(key);
@@ -274,14 +273,6 @@ class StromAbrechnungCard extends HTMLElement {
       autoDisplay.innerText = `${autoKwh.toFixed(1)} kWh (Auto)`;
     }
 
-    kwhInputs.forEach((input, index) => {
-      if (index < int(activeLimit) && index < activeLimit) { // fix safety
-        // handled below
-      }
-    });
-
-    // Re-loop for kWh totals cleanly
-    totalKwh = 0;
     kwhInputs.forEach((input, index) => {
       if (index < activeLimit) {
         totalKwh += parseFloat(input.value) || 0;
