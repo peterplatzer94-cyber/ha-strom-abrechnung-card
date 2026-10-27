@@ -143,4 +143,468 @@ class StromAbrechnungCard extends HTMLElement {
             <ha-entity-picker id="cfg_pv_sensor_picker" value="${currentPvSensor}" style="width: 100%; display: block;"></ha-entity-picker>
           </div>
 
-          <div
+          <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+            <button id="export_json_btn" type="button" style="flex: 1; padding: 8px; background: var(--card-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em;">📥 Backup</button>
+            <button id="import_json_btn" type="button" style="flex: 1; padding: 8px; background: var(--card-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em;">📤 Import</button>
+            <button id="export_csv_btn" type="button" style="flex: 1; padding: 8px; background: var(--card-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em;">📊 CSV</button>
+            <input type="file" id="import_file_input" style="display: none;" accept=".json">
+          </div>
+
+          <button id="save_settings_btn" style="width: 100%; padding: 10px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Speichern & Anwenden</button>
+        </div>
+
+        <!-- TABELLEN-KOPF -->
+        <div style="display: flex; justify-content: space-between; padding: 0 6px 6px 6px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
+          <span style="width: 95px;">Monat</span>
+          <span style="flex: 1; text-align: right;">Netz (kWh)</span>
+          <span style="flex: 1; text-align: right;">PV (kWh / €)</span>
+          <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
+        </div>
+
+        <!-- MONATE GRID -->
+        <div id="months_grid" style="display: flex; flex-direction: column; gap: 6px;"></div>
+
+        <div style="height: 1px; background: var(--divider-color); margin: 16px 0;"></div>
+
+        <!-- GESAMTANZEIGE & PROGNOSE -->
+        <div style="background: var(--secondary-background-color); padding: 14px; border-radius: 10px; border: 1px solid var(--divider-color);">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">Bezahlte Abschläge (Gesamt):</span>
+            <strong id="total_paid" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">Stromkosten (Netz kWh):</span>
+            <strong id="energy_cost" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">PV-Ersparnis (bisher):</span>
+            <strong id="total_pv_savings" style="color: var(--success-color, #43a047);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">Grundgebühr (Anteilig):</span>
+            <strong id="fee_display" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--secondary-text-color); margin-bottom: 8px; border-top: 1px solid var(--divider-color); padding-top: 6px;">
+            <span>Gesamtkosten bisher:</span>
+            <strong id="total_cost" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 1.05em; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--divider-color);">
+            <span style="font-weight: 500; color: var(--primary-text-color);">Aktuelle Bilanz:</span>
+            <strong id="balance_result" style="font-size: 1.15em;">0,00 €</strong>
+          </div>
+          
+          <!-- SAISONALE PROGNOSE BOX -->
+          <div id="forecast_box" style="margin-top: 12px; padding: 10px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1); border-radius: 8px; font-size: 0.85em; border: 1px solid var(--primary-color);">
+            <div style="font-weight: 500; color: var(--primary-text-color); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <span>🔮 Jahresend-Prognose (Saisonal):</span>
+            </div>
+            <div id="forecast_text" style="color: var(--secondary-text-color);">Berechne Prognose...</div>
+          </div>
+        </div>
+
+      </ha-card>
+    `;
+    this.content = true;
+
+    const sensorPicker = this.querySelector('#cfg_sensor_picker');
+    if (sensorPicker && this._hass) sensorPicker.hass = this._hass;
+
+    const pvSensorPicker = this.querySelector('#cfg_pv_sensor_picker');
+    if (pvSensorPicker && this._hass) pvSensorPicker.hass = this._hass;
+
+    this.initCard();
+    this.initSettingsPanel();
+  }
+
+  initSettingsPanel() {
+    const settingsBtn = this.querySelector('#settings_toggle_btn');
+    const settingsPanel = this.querySelector('#settings_panel');
+    const closeSettings = this.querySelector('#close_settings');
+    const saveBtn = this.querySelector('#save_settings_btn');
+    const applyAllBtn = this.querySelector('#apply_all_abschlag');
+    const exportJsonBtn = this.querySelector('#export_json_btn');
+    const importJsonBtn = this.querySelector('#import_json_btn');
+    const exportCsvBtn = this.querySelector('#export_csv_btn');
+    const fileInput = this.querySelector('#import_file_input');
+
+    if (settingsBtn && settingsPanel) {
+      settingsBtn.addEventListener('click', () => {
+        settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+      });
+    }
+
+    if (closeSettings && settingsPanel) {
+      closeSettings.addEventListener('click', () => {
+        settingsPanel.style.display = 'none';
+      });
+    }
+
+    if (applyAllBtn) {
+      applyAllBtn.addEventListener('click', () => {
+        const val = this.querySelector('#cfg_default_abschlag').value;
+        const activeYearStr = this.getActiveBillingYear();
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        for (let i = 0; i < 12; i++) {
+          localStorage.setItem(`strom_abschlag_${yearKeyPrefix}_${i}`, val);
+        }
+        this.render();
+      });
+    }
+
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', () => {
+        const data = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key.startsWith('strom_')) {
+            data[key] = localStorage.getItem(key);
+          }
+        }
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `strom_backup_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    if (importJsonBtn && fileInput) {
+      importJsonBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = JSON.parse(event.target.result);
+            Object.keys(data).forEach(key => {
+              if (key.startsWith('strom_')) {
+                localStorage.setItem(key, data[key]);
+              }
+            });
+            this.render();
+          } catch (err) {
+            alert('Fehler beim Lesen der Backup-Datei.');
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', () => {
+        const activeYearStr = this.getActiveBillingYear();
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        let csv = "Monat;Netz (kWh);PV (kWh);Abschlag (€)\n";
+        
+        for (let i = 0; i < 12; i++) {
+          const kwh = localStorage.getItem(`strom_kwh_${yearKeyPrefix}_${i}`) || "0";
+          const pv = localStorage.getItem(`strom_pv_${yearKeyPrefix}_${i}`) || "0";
+          const abschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${i}`) || "0";
+          csv += `Monat ${i+1};${kwh};${pv};${abschlag}\n`;
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `strom_abrechnung_${yearKeyPrefix}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        const newYear = this.querySelector('#cfg_billing_year').value;
+        const newStartMonth = parseInt(this.querySelector('#cfg_start_month').value);
+        const newPrice = parseFloat(this.querySelector('#cfg_price').value) || 0;
+        const newBaseFee = parseFloat(this.querySelector('#cfg_base_fee').value) || 0;
+        const newDefaultAbschlag = parseFloat(this.querySelector('#cfg_default_abschlag').value) || 0;
+        
+        const sensorPicker = this.querySelector('#cfg_sensor_picker');
+        const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
+
+        const pvSensorPicker = this.querySelector('#cfg_pv_sensor_picker');
+        const newPvSensor = pvSensorPicker ? pvSensorPicker.value : this.config.pv_sensor;
+
+        localStorage.setItem('strom_config_start_month', newStartMonth);
+        localStorage.setItem('strom_view_billing_year', newYear);
+        localStorage.setItem('strom_config_price', newPrice);
+        localStorage.setItem('strom_config_base_fee', newBaseFee);
+        localStorage.setItem('strom_config_default_abschlag', newDefaultAbschlag);
+        localStorage.setItem('strom_config_sensor', newSensor);
+        localStorage.setItem('strom_config_pv_sensor', newPvSensor);
+
+        this.config.price = newPrice;
+        this.config.base_fee = newBaseFee;
+        this.config.default_abschlag = newDefaultAbschlag;
+        this.config.sensor = newSensor;
+        this.config.pv_sensor = newPvSensor;
+
+        settingsPanel.style.display = 'none';
+        this.render();
+      });
+    }
+
+    const savedPrice = localStorage.getItem('strom_config_price');
+    const savedBaseFee = localStorage.getItem('strom_config_base_fee');
+    const savedAbschlag = localStorage.getItem('strom_config_default_abschlag');
+    const savedSensor = localStorage.getItem('strom_config_sensor');
+    const savedPvSensor = localStorage.getItem('strom_config_pv_sensor');
+
+    if (savedPrice !== null) this.config.price = parseFloat(savedPrice);
+    if (savedBaseFee !== null) this.config.base_fee = parseFloat(savedBaseFee);
+    if (savedAbschlag !== null) this.config.default_abschlag = parseFloat(savedAbschlag);
+    if (savedSensor) this.config.sensor = savedSensor;
+    if (savedPvSensor) this.config.pv_sensor = savedPvSensor;
+  }
+
+  initCard() {
+    const baseMonths = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    const activeYearStr = this.getActiveBillingYear(); 
+    const startYear = parseInt(activeYearStr.split('/')[0]);
+    const startMonth = this.getStartMonth();
+
+    const months = [];
+    let dateCursor = new Date(startYear, startMonth, 1); 
+    for (let i = 0; i < 12; i++) {
+      const mName = baseMonths[dateCursor.getMonth()];
+      const yNum = dateCursor.getFullYear();
+      months.push({ name: `${mName} ${yNum}`, index: i, monthNumber: dateCursor.getMonth() });
+      dateCursor.setMonth(dateCursor.getMonth() + 1);
+    }
+
+    const defaultAbschlag = parseFloat(localStorage.getItem('strom_config_default_abschlag')) || this.config.default_abschlag;
+    const grid = this.querySelector('#months_grid');
+    grid.innerHTML = '';
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = now.getMonth();
+    
+    let currentMonthOffset = (currentYear - startYear) * 12 + (currentMonthNum - startMonth);
+    if (currentMonthOffset < 0) currentMonthOffset = -999;
+    if (currentMonthOffset > 11) currentMonthOffset = 999;
+
+    months.forEach((mObj, index) => {
+      const yearKeyPrefix = activeYearStr.replace('/', '_');
+      const savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`) ?? defaultAbschlag;
+      const savedKwh = localStorage.getItem(`strom_kwh_${yearKeyPrefix}_${index}`) ?? '0';
+      const savedPv = localStorage.getItem(`strom_pv_${yearKeyPrefix}_${index}`) ?? '0';
+
+      const isCurrentMonth = (index === currentMonthOffset);
+      const rowBackground = isCurrentMonth ? 'var(--card-background-color)' : 'var(--secondary-background-color)';
+      const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
+
+      const div = document.createElement('div');
+      div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 6px 8px; border-radius: 8px; gap: 6px; border: ${rowBorder};`;
+      
+      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;">`;
+      if (isCurrentMonth) {
+        kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 6px; color: var(--primary-color);">Lädt...</div>`;
+      }
+
+      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;">`;
+      if (isCurrentMonth) {
+        pvFieldHtml = `<div id="auto_pv_display" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 6px; color: var(--success-color, #43a047);">Lädt...</div>`;
+      }
+
+      div.innerHTML = `
+        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
+        <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
+        <div style="flex: 1;" title="PV-Ertrag / Ersparnis">${pvFieldHtml}</div>
+        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input" data-index="${index}" value="${savedAbschlag}" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;"></div>
+      `;
+      grid.appendChild(div);
+    });
+
+    this.querySelectorAll('.month-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_abschlag_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.querySelectorAll('.kwh-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_kwh_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.querySelectorAll('.pv-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_pv_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.calculateTotals();
+  }
+
+  calculateTotals() {
+    if (!this._hass) return;
+
+    const activeYearStr = this.getActiveBillingYear();
+    const startYear = parseInt(activeYearStr.split('/')[0]);
+    const startMonth = this.getStartMonth();
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = now.getMonth();
+    let currentMonthOffset = (currentYear - startYear) * 12 + (currentMonthNum - startMonth);
+    
+    let activeLimit = 11;
+    if (activeYearStr !== this.getCurrentActiveBillingYear()) {
+      activeLimit = 11;
+    } else {
+      if (currentMonthOffset < 0) activeLimit = -1;
+      else if (currentMonthOffset <= 11) activeLimit = currentMonthOffset;
+    }
+
+    let totalPaid = 0;
+    let totalKwh = 0;
+    let totalPvKwh = 0;
+
+    const abschlagInputs = this.querySelectorAll('.month-input');
+    const kwhInputs = this.querySelectorAll('.kwh-input');
+    const pvInputs = this.querySelectorAll('.pv-input');
+    
+    abschlagInputs.forEach((input, index) => {
+      if (index <= activeLimit) {
+        totalPaid += parseFloat(input.value) || 0;
+      }
+    });
+
+    let autoKwh = 0;
+    const sensorId = localStorage.getItem('strom_config_sensor') || this.config.sensor;
+    const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
+    if (sensorId && this._hass.states[sensorId] && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      const val = parseFloat(this._hass.states[sensorId].state);
+      autoKwh = (isNaN(val) || Math.abs(val) < 0.0001) ? 0 : val;
+    }
+
+    let autoPv = 0;
+    const pvSensorId = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
+    if (pvSensorId && this._hass.states[pvSensorId] && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      const pvVal = parseFloat(this._hass.states[pvSensorId].state);
+      autoPv = (isNaN(pvVal) || Math.abs(pvVal) < 0.0001) ? 0 : pvVal;
+    }
+
+    const autoDisplay = this.querySelector('#auto_kwh_display');
+    if (autoDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      autoDisplay.innerText = `${autoKwh.toFixed(1)} kWh`;
+    } else if (autoDisplay && !isCurrentYear) {
+      autoDisplay.removeAttribute('id');
+    }
+
+    const autoPvDisplay = this.querySelector('#auto_pv_display');
+    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
+
+    if (autoPvDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
+      const euroVal = autoPv * pricePerKwh;
+      autoPvDisplay.innerText = `${autoPv.toFixed(1)} kWh (${euroVal.toFixed(1)} €)`;
+    } else if (autoPvDisplay && !isCurrentYear) {
+      autoPvDisplay.removeAttribute('id');
+    }
+
+    // Werte einsammeln für bisherige Monate
+    let pastKwhTotal = 0;
+    let pastMonthsCount = activeLimit < 0 ? 0 : (activeLimit + 1);
+
+    kwhInputs.forEach((input, index) => {
+      let mKwh = 0;
+      if (isCurrentYear) {
+        if (index < activeLimit) mKwh = parseFloat(input.value) || 0;
+        else if (index === activeLimit) mKwh = autoKwh;
+      } else {
+        mKwh = parseFloat(input.value) || 0;
+      }
+      totalKwh += mKwh;
+      if (index <= activeLimit || !isCurrentYear) {
+        pastKwhTotal += mKwh;
+      }
+    });
+
+    pvInputs.forEach((input, index) => {
+      let mPv = 0;
+      if (isCurrentYear) {
+        if (index < activeLimit) mPv = parseFloat(input.value) || 0;
+        else if (index === activeLimit) mPv = autoPv;
+      } else {
+        mPv = parseFloat(input.value) || 0;
+      }
+      totalPvKwh += mPv;
+    });
+
+    const energyCost = totalKwh * pricePerKwh;
+    const totalPvSavings = totalPvKwh * pricePerKwh;
+
+    const totalAnnualFee = parseFloat(localStorage.getItem('strom_config_base_fee')) || this.config.base_fee;
+    const monthlyFee = totalAnnualFee / 12;
+    const proRataFee = monthlyFee * pastMonthsCount;
+
+    const totalCost = energyCost + proRataFee;
+    const balance = totalPaid - totalCost;
+
+    // Saisonal gewichtete Jahresprognose berechnen
+    let forecastText = "Noch nicht genügend Daten für Prognose.";
+    if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
+      const avgMonthlyKwh = pastKwhTotal / pastMonthsCount;
+      // Saison-Faktor: Wintermonate (Nov-Feb) verbrauchen erfahrungsgemäß ca. 30% mehr, Sommermonate weniger
+      const remainingMonths = 12 - pastMonthsCount;
+      let estimatedRemainingKwh = 0;
+      
+      let cursorMonth = (startMonth + pastMonthsCount) % 12;
+      for (let r = 0; r < remainingMonths; r++) {
+        // Wintermonat Check (Nov=10, Dez=11, Jan=0, Feb=1)
+        const isWinter = [10, 11, 0, 1].includes(cursorMonth);
+        const seasonalFactor = isWinter ? 1.35 : 0.8;
+        estimatedRemainingKwh += (avgMonthlyKwh * seasonalFactor);
+        cursorMonth = (cursorMonth + 1) % 12;
+      }
+
+      const predictedTotalKwh = pastKwhTotal + estimatedRemainingKwh;
+      const predictedEnergyCost = predictedTotalKwh * pricePerKwh;
+      const predictedTotalCost = predictedEnergyCost + totalAnnualFee;
+      
+      // Gesamte Jahres-Abschläge (alle 12 Monate)
+      let totalAnnualPaid = 0;
+      abschlagInputs.forEach(input => {
+        totalAnnualPaid += parseFloat(input.value) || 0;
+      });
+
+      const predictedBalance = totalAnnualPaid - predictedTotalCost;
+      const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
+      const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
+
+      forecastText = `Vorauss. Gesamtverbrauch: <strong>${predictedTotalKwh.toFixed(0)} kWh</strong><br>` +
+                     `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
+    }
+
+    if (this.querySelector('#total_paid')) {
+      this.querySelector('#total_paid').innerText = `${totalPaid.toFixed(2)} €`;
+      this.querySelector('#energy_cost').innerText = `${energyCost.toFixed(2)} € (${totalKwh.toFixed(1)} kWh)`;
+      this.querySelector('#total_pv_savings').innerText = `+${totalPvSavings.toFixed(2)} € (${totalPvKwh.toFixed(1)} kWh)`;
+      this.querySelector('#fee_display').innerText = `${proRataFee.toFixed(2)} €`;
+      this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
+      
+      const balanceElem = this.querySelector('#balance_result');
+      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.toFixed(2)} €`;
+      balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
+
+      const forecastElem = this.querySelector('#forecast_text');
+      if (forecastElem) forecastElem.innerHTML = forecastText;
+    }
+  }
+
+  getCardSize() { return 12; }
+}
+
+customElements.define('strom-abrechnung-card', StromAbrechnungCard);
