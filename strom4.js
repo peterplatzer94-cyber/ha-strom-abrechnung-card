@@ -158,13 +158,13 @@ class StromAbrechnungCard extends HTMLElement {
           
           <!-- LINKE SPALTE: MONATE -->
           <div>
-            <div style="display: flex; justify-content: space-between; padding: 0 6px 6px 6px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-              <span style="width: 95px;">Monat</span>
+            <div style="display: flex; justify-content: space-between; padding: 0 8px 6px 8px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
+              <span style="width: 85px;">Monat</span>
               <span style="flex: 1; text-align: right;">Netz (kWh)</span>
-              <span style="flex: 1; text-align: right;">PV (kWh / €)</span>
+              <span style="flex: 1; text-align: right;">PV (kWh)</span>
               <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
             </div>
-            <div id="months_grid" style="display: flex; flex-direction: column; gap: 6px;"></div>
+            <div id="months_grid" style="display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
 
           <!-- RECHTE SPALTE: AUSWERTUNG & PROGNOSE -->
@@ -217,11 +217,23 @@ class StromAbrechnungCard extends HTMLElement {
 
       </ha-card>
 
-      <!-- CSS für responsives Grid (Auf großen Bildschirmen 2 Spalten, auf Handy 1 Spalte) -->
+      <!-- CSS für responsives Grid und verbreiterte Eingabefelder -->
       <style>
+        .wide-input {
+          width: 100%;
+          padding: 8px 6px !important;
+          font-size: 0.95em !important;
+          font-weight: 500;
+          border-radius: 6px;
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          text-align: right;
+          box-sizing: border-box;
+        }
         @media (min-width: 768px) {
           .card-grid-layout {
-            grid-template-columns: 1.3fr 1fr !important;
+            grid-template-columns: 1.4fr 1fr !important;
           }
         }
       </style>
@@ -422,23 +434,23 @@ class StromAbrechnungCard extends HTMLElement {
       const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
 
       const div = document.createElement('div');
-      div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 6px 8px; border-radius: 8px; gap: 6px; border: ${rowBorder};`;
+      div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 8px 10px; border-radius: 8px; gap: 8px; border: ${rowBorder};`;
       
-      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;">`;
+      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh">`;
       if (isCurrentMonth) {
-        kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 6px; color: var(--primary-color);">Lädt...</div>`;
+        kwhFieldHtml = `<div id="auto_kwh_display" style="font-size: 0.85em; font-weight: 600; text-align: right; padding: 8px 6px; color: var(--primary-color);">Lädt...</div>`;
       }
 
-      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;">`;
+      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh">`;
       if (isCurrentMonth) {
-        pvFieldHtml = `<div id="auto_pv_display" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 6px; color: var(--success-color, #43a047);">Lädt...</div>`;
+        pvFieldHtml = `<div id="auto_pv_display" style="font-size: 0.8em; font-weight: 600; text-align: right; padding: 8px 6px; color: var(--success-color, #43a047);">Lädt...</div>`;
       }
 
       div.innerHTML = `
-        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
+        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 85px; color: var(--primary-text-color);">${mObj.name}</div>
         <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
-        <div style="flex: 1;" title="PV-Ertrag / Ersparnis">${pvFieldHtml}</div>
-        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input" data-index="${index}" value="${savedAbschlag}" style="width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); text-align: right; font-size: 0.85em;"></div>
+        <div style="flex: 1;" title="PV-Ertrag in kWh">${pvFieldHtml}</div>
+        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input wide-input" data-index="${index}" value="${savedAbschlag}"></div>
       `;
       grid.appendChild(div);
     });
