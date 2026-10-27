@@ -10,6 +10,7 @@ class StromAbrechnungCard extends HTMLElement {
       base_fee: 146.72,
       default_abschlag: 238.45,
       winter_profile: "1.45",
+      billing_deadline: "",
       ...config
     };
     this.requestUpdate();
@@ -74,6 +75,7 @@ class StromAbrechnungCard extends HTMLElement {
     const currentBaseFee = localStorage.getItem('strom_config_base_fee') ?? this.config.base_fee;
     const currentDefaultAbschlag = localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag;
     const currentWinterProfile = localStorage.getItem('strom_config_winter_profile') ?? this.config.winter_profile;
+    const currentDeadline = localStorage.getItem('strom_config_deadline') ?? this.config.billing_deadline;
 
     const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
@@ -127,11 +129,17 @@ class StromAbrechnungCard extends HTMLElement {
             </div>
           </div>
 
-          <div style="margin-bottom: 10px;">
-            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Standard-Abschlag (€ / Monat):</label>
-            <div style="display: flex; gap: 6px;">
-              <input type="number" step="0.01" id="cfg_default_abschlag" value="${currentDefaultAbschlag}" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-              <button id="apply_all_abschlag" type="button" style="padding: 8px 12px; background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em; color: var(--primary-text-color);" title="Auf alle Monate übertragen">Auf alle</button>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Standard-Abschlag (€/M):</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="number" step="0.01" id="cfg_default_abschlag" value="${currentDefaultAbschlag}" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
+                <button id="apply_all_abschlag" type="button" style="padding: 8px 10px; background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 6px; cursor: pointer; font-size: 0.8em; color: var(--primary-text-color);" title="Auf alle Monate übertragen">Alle</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Abrechnungs-Stichtag:</label>
+              <input type="date" id="cfg_deadline" value="${currentDeadline}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
             </div>
           </div>
 
@@ -352,6 +360,7 @@ class StromAbrechnungCard extends HTMLElement {
         const newBaseFee = parseFloat(this.querySelector('#cfg_base_fee').value) || 0;
         const newDefaultAbschlag = parseFloat(this.querySelector('#cfg_default_abschlag').value) || 0;
         const newWinterProfile = this.querySelector('#cfg_winter_profile').value;
+        const newDeadline = this.querySelector('#cfg_deadline').value;
         
         const sensorPicker = this.querySelector('#cfg_sensor_picker');
         const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
@@ -365,6 +374,7 @@ class StromAbrechnungCard extends HTMLElement {
         localStorage.setItem('strom_config_base_fee', newBaseFee);
         localStorage.setItem('strom_config_default_abschlag', newDefaultAbschlag);
         localStorage.setItem('strom_config_winter_profile', newWinterProfile);
+        localStorage.setItem('strom_config_deadline', newDeadline);
         localStorage.setItem('strom_config_sensor', newSensor);
         localStorage.setItem('strom_config_pv_sensor', newPvSensor);
 
@@ -372,6 +382,7 @@ class StromAbrechnungCard extends HTMLElement {
         this.config.base_fee = newBaseFee;
         this.config.default_abschlag = newDefaultAbschlag;
         this.config.winter_profile = newWinterProfile;
+        this.config.billing_deadline = newDeadline;
         this.config.sensor = newSensor;
         this.config.pv_sensor = newPvSensor;
 
@@ -384,6 +395,7 @@ class StromAbrechnungCard extends HTMLElement {
     const savedBaseFee = localStorage.getItem('strom_config_base_fee');
     const savedAbschlag = localStorage.getItem('strom_config_default_abschlag');
     const savedWinterProfile = localStorage.getItem('strom_config_winter_profile');
+    const savedDeadline = localStorage.getItem('strom_config_deadline');
     const savedSensor = localStorage.getItem('strom_config_sensor');
     const savedPvSensor = localStorage.getItem('strom_config_pv_sensor');
 
@@ -391,6 +403,7 @@ class StromAbrechnungCard extends HTMLElement {
     if (savedBaseFee !== null) this.config.base_fee = parseFloat(savedBaseFee);
     if (savedAbschlag !== null) this.config.default_abschlag = parseFloat(savedAbschlag);
     if (savedWinterProfile !== null) this.config.winter_profile = savedWinterProfile;
+    if (savedDeadline !== null) this.config.billing_deadline = savedDeadline;
     if (savedSensor) this.config.sensor = savedSensor;
     if (savedPvSensor) this.config.pv_sensor = savedPvSensor;
   }
@@ -589,8 +602,17 @@ class StromAbrechnungCard extends HTMLElement {
     const totalPvSavings = totalPvKwh * pricePerKwh;
 
     const totalAnnualFee = parseFloat(localStorage.getItem('strom_config_base_fee')) || this.config.base_fee;
-    const monthlyFee = totalAnnualFee / 12;
-    const proRataFee = monthlyFee * pastMonthsCount;
+    
+    // --- Taggerechte Grundgebühr-Berechnung bis zum Stichtag (falls hinterlegt) ---
+    let proRataFee = (totalAnnualFee / 12) * pastMonthsCount;
+    const deadlineStr = localStorage.getItem('strom_config_deadline');
+    if (deadlineStr) {
+      const deadlineDate = new Date(deadlineStr);
+      const yearStart = new Date(startYear, startMonth, 1);
+      const totalDaysInYear = (new Date(startYear + 1, startMonth, 1) - yearStart) / (1000 * 60 * 60 * 24);
+      const elapsedDays = Math.max(0, Math.min(totalDaysInYear, (now - yearStart) / (1000 * 60 * 60 * 24)));
+      proRataFee = (totalAnnualFee / totalDaysInYear) * elapsedDays;
+    }
 
     const totalCost = energyCost + proRataFee;
     const balance = totalPaid - totalCost;
@@ -598,37 +620,35 @@ class StromAbrechnungCard extends HTMLElement {
     let forecastText = "Noch nicht genügend Daten für Prognose.";
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
       const calculatedAvg = pastKwhTotal / pastMonthsCount;
-      const baseAvgKwh = Math.max(calculatedAvg, 520); // Realistische Mindest-Basis für den Monat
+      const baseAvgKwh = Math.max(calculatedAvg, 520); 
       const baseAvgPv = pastPvTotal / pastMonthsCount;
       const remainingMonths = 12 - pastMonthsCount;
       
       const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
 
-      // --- Monats-Faktoren für Netzbezug (perfekt abgestimmt auf deine historischen Monate wie April mit ~600kWh) ---
       const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterFactor;     // Dez, Jan, Feb (Dein gewähltes Profil: Wenig, Mittel, Viel, Extrem)
-        if ([2, 3, 10].includes(mIndex)) return 1.2;              // März, April, Nov (Übergang / Hoher Start- und Endmonat)
-        if ([9].includes(mIndex)) return 1.1;                     // Oktober
-        if ([4, 8].includes(mIndex)) return 0.95;                   // Mai, September
-        return 0.75;                                              // Juni, Juli, August (Sommer-Tief)
+        if ([11, 0, 1].includes(mIndex)) return winterFactor;     
+        if ([2, 3, 10].includes(mIndex)) return 1.2;              
+        if ([9].includes(mIndex)) return 1.1;                     
+        if ([4, 8].includes(mIndex)) return 0.95;                   
+        return 0.75;                                              
       };
 
       const getMonthPvFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return 0.2;              // Dez, Jan, Feb
-        if ([2, 10].includes(mIndex)) return 0.6;                 // März, Nov
-        if ([3, 9].includes(mIndex)) return 1.1;                  // April, Okt
-        if ([4, 8].includes(mIndex)) return 1.5;                  // Mai, Sep
-        return 1.8;                                               // Jun, Jul, Aug (Sommer-Peak)
+        if ([11, 0, 1].includes(mIndex)) return 0.2;              
+        if ([2, 10].includes(mIndex)) return 0.6;                 
+        if ([3, 9].includes(mIndex)) return 1.1;                  
+        if ([4, 8].includes(mIndex)) return 1.5;                  
+        return 1.8;                                               
       };
 
-      // --- Schreibe Vorschau in ALLE 12 Monate der Tabelle ---
       let tempCursorMonth = startMonth;
       for (let i = 0; i < 12; i++) {
         const kF = getMonthKwhFactor(tempCursorMonth);
         const pF = getMonthPvFactor(tempCursorMonth);
 
         const monthEstKwh = baseAvgKwh * kF;
-        const monthEstPv = Math.max(baseAvgPv, 150) * pF; // PV-Basis absichern
+        const monthEstPv = Math.max(baseAvgPv, 150) * pF;
 
         const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${i}"]`);
         const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${i}"]`);
@@ -668,7 +688,16 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
-      forecastText = `Restliche Monate (Prognose):<br>` +
+      // Zeige Stichtag-Countdown in der Prognose, falls gesetzt
+      let deadlineInfo = "";
+      if (deadlineStr) {
+        const dDate = new Date(deadlineStr);
+        const daysLeft = Math.ceil((dDate - now) / (1000 * 60 * 60 * 24));
+        deadlineInfo = `Noch <strong>${daysLeft > 0 ? daysLeft : 0} Tage</strong> bis zum Stichtag (${dDate.toLocaleDateString('de-DE')})<br>`;
+      }
+
+      forecastText = `${deadlineInfo}` +
+                     `Restliche Monate (Prognose):<br>` +
                      `• Netzbezug: <strong>+${estimatedRemainingKwh.toFixed(0)} kWh</strong><br>` +
                      `• PV-Ertrag: <strong style="color: var(--success-color, #43a047);">+${estimatedRemainingPv.toFixed(0)} kWh</strong><br>` +
                      `-----------------------------------<br>` +
