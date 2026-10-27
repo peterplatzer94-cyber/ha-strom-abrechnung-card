@@ -138,9 +138,10 @@ class StromAbrechnungCard extends HTMLElement {
           <div style="margin-bottom: 10px;">
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Verbrauchsprofil (Prognose-Faktor Nov–Feb):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-              <option value="1.15" ${currentWinterProfile === "1.15" ? 'selected' : ''}>Wenig Mehrverbrauch im Winter (Faktor 1.15)</option>
+              <option value="1.15" ${currentWinterProfile === "1.15" ? 'selected' : ''}>Wenig (Faktor 1.15)</option>
               <option value="1.45" ${currentWinterProfile === "1.45" ? 'selected' : ''}>Mittel / Normal (Faktor 1.45)</option>
               <option value="1.80" ${currentWinterProfile === "1.80" ? 'selected' : ''}>Viel / Gaming & Heizen (Faktor 1.80)</option>
+              <option value="2.20" ${currentWinterProfile === "2.20" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 2.20)</option>
             </select>
           </div>
 
@@ -601,7 +602,7 @@ class StromAbrechnungCard extends HTMLElement {
       
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
-        // --- Netzbezug mit individuellem Winter-Profil-Faktor ---
+        // --- Netzbezug mit Winter-Profil-Faktor (inkl. Extrem-Modus 2.20) ---
         const isWinter = [10, 11, 0, 1].includes(cursorMonth); // Nov - Feb
         const kwhFactor = isWinter ? winterFactor : 0.75;
         estimatedRemainingKwh += (avgMonthlyKwh * kwhFactor);
