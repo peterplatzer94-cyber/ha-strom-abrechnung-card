@@ -153,75 +153,62 @@ class StromAbrechnungCard extends HTMLElement {
           <button id="save_settings_btn" style="width: 100%; padding: 10px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">Speichern & Anwenden</button>
         </div>
 
-        <!-- HAUPT-LAYOUT (1 Spalte auf Handy, breit optimierte 2 Spalten auf PC) -->
-        <div class="card-grid-layout" style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+        <!-- TABELLEN-KOPF -->
+        <div style="display: flex; justify-content: space-between; padding: 0 8px 6px 8px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
+          <span style="width: 95px;">Monat</span>
+          <span style="flex: 1; text-align: right;">Netz (kWh)</span>
+          <span style="flex: 1; text-align: right;">PV (kWh)</span>
+          <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
+        </div>
+
+        <!-- MONATE GRID (Volle Breite, große Eingabefelder) -->
+        <div id="months_grid" style="display: flex; flex-direction: column; gap: 8px;"></div>
+
+        <div style="height: 1px; background: var(--divider-color); margin: 16px 0;"></div>
+
+        <!-- GESAMTANZEIGE & PROGNOSE (Unten) -->
+        <div style="background: var(--secondary-background-color); padding: 14px; border-radius: 10px; border: 1px solid var(--divider-color);">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">Bezahlte Abschläge:</span>
+            <strong id="total_paid" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">Stromkosten (Netz kWh):</span>
+            <strong id="energy_cost" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">PV-Ersparnis (bisher):</span>
+            <strong id="total_pv_savings" style="color: var(--success-color, #43a047);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+            <span style="color: var(--secondary-text-color);">Grundgebühr (Anteilig):</span>
+            <strong id="fee_display" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--secondary-text-color); margin-bottom: 8px; border-top: 1px solid var(--divider-color); padding-top: 6px;">
+            <span>Gesamtkosten bisher:</span>
+            <strong id="total_cost" style="color: var(--primary-text-color);">0,00 €</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 1.05em; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--divider-color);">
+            <span style="font-weight: 500; color: var(--primary-text-color);">Aktuelle Bilanz:</span>
+            <strong id="balance_result" style="font-size: 1.15em;">0,00 €</strong>
+          </div>
           
-          <!-- LINKE SPALTE: MONATE (Bekommt nun extra viel Platz) -->
-          <div>
-            <div style="display: flex; justify-content: space-between; padding: 0 8px 6px 8px; font-size: 0.75em; color: var(--secondary-text-color); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">
-              <span style="width: 95px;">Monat</span>
-              <span style="flex: 1; text-align: right;">Netz (kWh)</span>
-              <span style="flex: 1; text-align: right;">PV (kWh)</span>
-              <span style="flex: 1; text-align: right; padding-right: 4px;">Abschlag (€)</span>
+          <!-- SAISONALE PROGNOSE BOX -->
+          <div id="forecast_box" style="margin-top: 12px; padding: 10px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1); border-radius: 8px; font-size: 0.85em; border: 1px solid var(--primary-color);">
+            <div style="font-weight: 500; color: var(--primary-text-color); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <span>🔮 Jahresend-Prognose (Saisonal):</span>
             </div>
-            <div id="months_grid" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            <div id="forecast_text" style="color: var(--secondary-text-color);">Berechne Prognose...</div>
           </div>
-
-          <!-- RECHTE SPALTE: AUSWERTUNG & PROGNOSE -->
-          <div>
-            <div style="background: var(--secondary-background-color); padding: 14px; border-radius: 10px; border: 1px solid var(--divider-color); height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
-              <div>
-                <div style="font-weight: 500; font-size: 0.95em; color: var(--primary-text-color); margin-bottom: 12px; border-bottom: 1px solid var(--divider-color); padding-bottom: 6px;">
-                  📊 Jahresbilanz
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
-                  <span style="color: var(--secondary-text-color);">Bezahlte Abschläge:</span>
-                  <strong id="total_paid" style="color: var(--primary-text-color);">0,00 €</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
-                  <span style="color: var(--secondary-text-color);">Stromkosten (Netz kWh):</span>
-                  <strong id="energy_cost" style="color: var(--primary-text-color);">0,00 €</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
-                  <span style="color: var(--secondary-text-color);">PV-Ersparnis (bisher):</span>
-                  <strong id="total_pv_savings" style="color: var(--success-color, #43a047);">0,00 €</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
-                  <span style="color: var(--secondary-text-color);">Grundgebühr (Anteilig):</span>
-                  <strong id="fee_display" style="color: var(--primary-text-color);">0,00 €</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--secondary-text-color); margin-bottom: 8px; border-top: 1px solid var(--divider-color); padding-top: 6px;">
-                  <span>Gesamtkosten bisher:</span>
-                  <strong id="total_cost" style="color: var(--primary-text-color);">0,00 €</strong>
-                </div>
-              </div>
-
-              <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 1.05em; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--divider-color);">
-                  <span style="font-weight: 500; color: var(--primary-text-color);">Aktuelle Bilanz:</span>
-                  <strong id="balance_result" style="font-size: 1.15em;">0,00 €</strong>
-                </div>
-                
-                <!-- SAISONALE PROGNOSE BOX -->
-                <div id="forecast_box" style="margin-top: 12px; padding: 10px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1); border-radius: 8px; font-size: 0.85em; border: 1px solid var(--primary-color);">
-                  <div style="font-weight: 500; color: var(--primary-text-color); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                    <span>🔮 Jahresend-Prognose (Saisonal):</span>
-                  </div>
-                  <div id="forecast_text" style="color: var(--secondary-text-color);">Berechne Prognose...</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
         </div>
 
       </ha-card>
 
-      <!-- CSS: Linke Spalte bekommt nun 1.6 Teile, rechte Spalte 1 Teil (viel mehr Platz für die Tabelle!) -->
+      <!-- CSS für komfortabel breite Eingabefelder -->
       <style>
         .wide-input {
           width: 100%;
-          padding: 8px 6px !important;
+          padding: 8px 8px !important;
           font-size: 0.95em !important;
           font-weight: 500;
           border-radius: 6px;
@@ -230,11 +217,6 @@ class StromAbrechnungCard extends HTMLElement {
           color: var(--primary-text-color);
           text-align: right;
           box-sizing: border-box;
-        }
-        @media (min-width: 900px) {
-          .card-grid-layout {
-            grid-template-columns: 1.6fr 1fr !important;
-          }
         }
       </style>
     `;
