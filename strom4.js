@@ -11,6 +11,8 @@ class StromAbrechnungCard extends HTMLElement {
       default_abschlag: 238.45,
       winter_profile: "1.45",
       billing_deadline: "",
+      feed_in_active: false,
+      feed_in_price: 0.082,
       ...config
     };
     this.requestUpdate();
@@ -76,6 +78,10 @@ class StromAbrechnungCard extends HTMLElement {
     const currentDefaultAbschlag = localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag;
     const currentWinterProfile = localStorage.getItem('strom_config_winter_profile') ?? this.config.winter_profile;
     const currentDeadline = localStorage.getItem('strom_config_deadline') ?? this.config.billing_deadline;
+    
+    const savedFeedInActive = localStorage.getItem('strom_config_feed_in_active');
+    const currentFeedInActive = savedFeedInActive !== null ? savedFeedInActive === 'true' : this.config.feed_in_active;
+    const currentFeedInPrice = localStorage.getItem('strom_config_feed_in_price') ?? this.config.feed_in_price;
 
     const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
@@ -143,6 +149,18 @@ class StromAbrechnungCard extends HTMLElement {
             </div>
           </div>
 
+          <!-- NEU: Einspeisevergütung Optionen -->
+          <div style="background: var(--card-background-color); padding: 10px; border-radius: 8px; border: 1px solid var(--divider-color); margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input type="checkbox" id="cfg_feed_in_active" ${currentFeedInActive ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;">
+              <label for="cfg_feed_in_active" style="font-size: 0.8em; font-weight: 500; color: var(--primary-text-color); cursor: pointer;">Einspeisevergütung erhalten (PV-Gutschrift aktiv)</label>
+            </div>
+            <div id="feed_in_price_container" style="display: ${currentFeedInActive ? 'block' : 'none'};">
+              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Einspeisevergütung (€ / kWh):</label>
+              <input type="number" step="0.001" id="cfg_feed_in_price" value="${currentFeedInPrice}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--secondary-background-color); color: var(--primary-text-color); box-sizing: border-box;">
+            </div>
+          </div>
+
           <div style="margin-bottom: 10px;">
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Verbrauchsprofil (Prognose-Faktor Nov–Feb):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
@@ -197,8 +215,8 @@ class StromAbrechnungCard extends HTMLElement {
             <strong id="energy_cost" style="color: var(--primary-text-color);">0,00 €</strong>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
-            <span style="color: var(--secondary-text-color);">PV-Ersparnis (bisher):</span>
-            <strong id="total_pv_savings" style="color: var(--success-color, #43a047);">0,00 €</strong>
+            <span style="color: var(--secondary-text-color);">PV-Ertrag (Ersparnis/Gutschrift):</span>
+            <strong id="total_pv_savings" style="color: var(--success-color, #43a047);">0,00 kWh</strong>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
             <span style="color: var(--secondary-text-color);">Grundgebühr (Anteilig):</span>
@@ -241,6 +259,15 @@ class StromAbrechnungCard extends HTMLElement {
       </style>
     `;
     this.content = true;
+
+    // Checkbox-Toggle für Einspeisung im UI verknüpfen
+    const feedInCheckbox = this.querySelector('#cfg_feed_in_active');
+    const feedInPriceContainer = this.querySelector('#feed_in_price_container');
+    if (feedInCheckbox && feedInPriceContainer) {
+      feedInCheckbox.addEventListener('change', (e) => {
+        feedInPriceContainer.style.display = e.target.checked ? 'block' : 'none';
+      });
+    }
 
     const sensorPicker = this.querySelector('#cfg_sensor_picker');
     if (sensorPicker && this._hass) sensorPicker.hass = this._hass;
@@ -361,6 +388,8 @@ class StromAbrechnungCard extends HTMLElement {
         const newDefaultAbschlag = parseFloat(this.querySelector('#cfg_default_abschlag').value) || 0;
         const newWinterProfile = this.querySelector('#cfg_winter_profile').value;
         const newDeadline = this.querySelector('#cfg_deadline').value;
+        const newFeedInActive = this.querySelector('#cfg_feed_in_active').checked;
+        const newFeedInPrice = parseFloat(this.querySelector('#cfg_feed_in_price').value) || 0;
         
         const sensorPicker = this.querySelector('#cfg_sensor_picker');
         const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
@@ -375,6 +404,8 @@ class StromAbrechnungCard extends HTMLElement {
         localStorage.setItem('strom_config_default_abschlag', newDefaultAbschlag);
         localStorage.setItem('strom_config_winter_profile', newWinterProfile);
         localStorage.setItem('strom_config_deadline', newDeadline);
+        localStorage.setItem('strom_config_feed_in_active', newFeedInActive);
+        localStorage.setItem('strom_config_feed_in_price', newFeedInPrice);
         localStorage.setItem('strom_config_sensor', newSensor);
         localStorage.setItem('strom_config_pv_sensor', newPvSensor);
 
@@ -383,6 +414,8 @@ class StromAbrechnungCard extends HTMLElement {
         this.config.default_abschlag = newDefaultAbschlag;
         this.config.winter_profile = newWinterProfile;
         this.config.billing_deadline = newDeadline;
+        this.config.feed_in_active = newFeedInActive;
+        this.config.feed_in_price = newFeedInPrice;
         this.config.sensor = newSensor;
         this.config.pv_sensor = newPvSensor;
 
@@ -559,11 +592,8 @@ class StromAbrechnungCard extends HTMLElement {
     }
 
     const autoPvDisplay = this.querySelector('#auto_pv_display');
-    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
-
     if (autoPvDisplay && isCurrentYear && activeLimit >= 0 && activeLimit <= 11) {
-      const euroVal = autoPv * pricePerKwh;
-      autoPvDisplay.innerText = `${autoPv.toFixed(1)} kWh (${euroVal.toFixed(1)} €)`;
+      autoPvDisplay.innerText = `${autoPv.toFixed(1)} kWh`;
     }
 
     let pastKwhTotal = 0;
@@ -598,12 +628,15 @@ class StromAbrechnungCard extends HTMLElement {
       }
     });
 
-    const energyCost = totalKwh * pricePerKwh;
-    const totalPvSavings = totalPvKwh * pricePerKwh;
+    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
+    const energyCost = totalKwh * pricePerKwh; 
+
+    const feedInActive = localStorage.getItem('strom_config_feed_in_active') === 'true';
+    const feedInPrice = parseFloat(localStorage.getItem('strom_config_feed_in_price')) || 0;
+    const feedInEarnings = feedInActive ? (totalPvKwh * feedInPrice) : 0;
 
     const totalAnnualFee = parseFloat(localStorage.getItem('strom_config_base_fee')) || this.config.base_fee;
     
-    // --- Taggerechte Grundgebühr-Berechnung bis zum Stichtag (falls hinterlegt) ---
     let proRataFee = (totalAnnualFee / 12) * pastMonthsCount;
     const deadlineStr = localStorage.getItem('strom_config_deadline');
     if (deadlineStr) {
@@ -614,7 +647,8 @@ class StromAbrechnungCard extends HTMLElement {
       proRataFee = (totalAnnualFee / totalDaysInYear) * elapsedDays;
     }
 
-    const totalCost = energyCost + proRataFee;
+    // Wenn Einspeisevergütung aktiv ist, wird sie als Gutschrift von den Gesamtkosten abgezogen
+    const totalCost = energyCost + proRataFee - feedInEarnings;
     const balance = totalPaid - totalCost;
 
     let forecastText = "Noch nicht genügend Daten für Prognose.";
@@ -676,8 +710,8 @@ class StromAbrechnungCard extends HTMLElement {
       const predictedTotalPvKwh = pastPvTotal + estimatedRemainingPv;
       
       const predictedEnergyCost = predictedTotalKwh * pricePerKwh;
-      const predictedPvSavings = predictedTotalPvKwh * pricePerKwh;
-      const predictedTotalCost = predictedEnergyCost + totalAnnualFee - predictedPvSavings;
+      const predictedFeedInEarnings = feedInActive ? (predictedTotalPvKwh * feedInPrice) : 0;
+      const predictedTotalCost = predictedEnergyCost + totalAnnualFee - predictedFeedInEarnings;
       
       let totalAnnualPaid = 0;
       abschlagInputs.forEach(input => {
@@ -688,7 +722,6 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
-      // Zeige Stichtag-Countdown in der Prognose, falls gesetzt
       let deadlineInfo = "";
       if (deadlineStr) {
         const dDate = new Date(deadlineStr);
@@ -696,19 +729,30 @@ class StromAbrechnungCard extends HTMLElement {
         deadlineInfo = `Noch <strong>${daysLeft > 0 ? daysLeft : 0} Tage</strong> bis zum Stichtag (${dDate.toLocaleDateString('de-DE')})<br>`;
       }
 
+      let forecastPvLabel = `${predictedTotalPvKwh.toFixed(0)} kWh PV`;
+      if (feedInActive) {
+        forecastPvLabel += ` (~${predictedFeedInEarnings.toFixed(2)} € Gutschrift)`;
+      }
+
       forecastText = `${deadlineInfo}` +
                      `Restliche Monate (Prognose):<br>` +
                      `• Netzbezug: <strong>+${estimatedRemainingKwh.toFixed(0)} kWh</strong><br>` +
                      `• PV-Ertrag: <strong style="color: var(--success-color, #43a047);">+${estimatedRemainingPv.toFixed(0)} kWh</strong><br>` +
                      `-----------------------------------<br>` +
-                     `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${predictedTotalPvKwh.toFixed(0)} kWh PV</strong><br>` +
+                     `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${forecastPvLabel}</strong><br>` +
                      `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
     }
 
     if (this.querySelector('#total_paid')) {
       this.querySelector('#total_paid').innerText = `${totalPaid.toFixed(2)} €`;
       this.querySelector('#energy_cost').innerText = `${energyCost.toFixed(2)} € (${totalKwh.toFixed(1)} kWh)`;
-      this.querySelector('#total_pv_savings').innerText = `+${totalPvSavings.toFixed(2)} € (${totalPvKwh.toFixed(1)} kWh)`;
+      
+      let pvDisplayStr = `${totalPvKwh.toFixed(1)} kWh`;
+      if (feedInActive) {
+        pvDisplayStr += ` (+${feedInEarnings.toFixed(2)} €)`;
+      }
+      this.querySelector('#total_pv_savings').innerText = pvDisplayStr;
+
       this.querySelector('#fee_display').innerText = `${proRataFee.toFixed(2)} €`;
       this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
       
