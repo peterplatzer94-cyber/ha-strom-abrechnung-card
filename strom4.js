@@ -19,7 +19,7 @@ class StromAbrechnungCard extends HTMLElement {
       feed_in_active: false,
       feed_in_price: 0.082,
       pv_wp: 4000,
-      admin_password: "", // Standardmäßig kein Passwort gesetzt
+      admin_password: "",
       ...config
     };
     this.requestUpdate();
@@ -267,7 +267,7 @@ class StromAbrechnungCard extends HTMLElement {
 
       </ha-card>
 
-      <!-- CSS für komfortable Eingabefelder und Sperr-Optik -->
+      <!-- CSS für komfortable Eingabefelder und Buttons -->
       <style>
         .wide-input {
           width: 100%;
@@ -285,6 +285,24 @@ class StromAbrechnungCard extends HTMLElement {
           opacity: 0.7;
           cursor: not-allowed;
           background: var(--secondary-background-color);
+        }
+        .sync-btn {
+          background: var(--card-background-color);
+          border: 1px solid var(--divider-color);
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.8em;
+          padding: 0 6px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--primary-text-color);
+          transition: background 0.2s;
+        }
+        .sync-btn:hover {
+          background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+          border-color: var(--primary-color);
         }
       </style>
     `;
@@ -569,22 +587,6 @@ class StromAbrechnungCard extends HTMLElement {
       const isCurrentMonth = (index === currentMonthOffset);
       const isFutureMonth = (index > currentMonthOffset && activeYearStr === this.getCurrentActiveBillingYear());
 
-      if (isCurrentMonth && !savedKwh && this._hass) {
-        const sensorId = localStorage.getItem('strom_config_sensor') || this.config.sensor;
-        if (sensorId && this._hass.states[sensorId]) {
-          const val = parseFloat(this._hass.states[sensorId].state);
-          if (!isNaN(val)) savedKwh = val;
-        }
-      }
-
-      if (isCurrentMonth && !savedPv && this._hass) {
-        const pvSensorId = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
-        if (pvSensorId && this._hass.states[pvSensorId]) {
-          const pvVal = parseFloat(this._hass.states[pvSensorId].state);
-          if (!isNaN(pvVal)) savedPv = pvVal;
-        }
-      }
-
       const rowBackground = isCurrentMonth ? 'var(--card-background-color)' : 'var(--secondary-background-color)';
       const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
 
@@ -596,15 +598,23 @@ class StromAbrechnungCard extends HTMLElement {
       let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" ${disabledAttr}>`;
       let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh" ${disabledAttr}>`;
 
+      // Live-Sync Button für den aktuellen Monat einfügen, sofern nicht gesperrt
+      let syncBtnHtml = `<div style="width: 28px;"></div>`;
+      if (isCurrentMonth && !isLocked) {
+        syncBtnHtml = `<button type="button" class="sync-btn" data-index="${index}" title="Aktuellen Live-Sensor-Wert aus Home Assistant übernehmen">🔄</button>`;
+      }
+
       if (isFutureMonth) {
         kwhFieldHtml = `<div class="forecast-kwh-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--secondary-text-color);">--</div>`;
         pvFieldHtml = `<div class="forecast-pv-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--success-color, #43a047);">--</div>`;
+        syncBtnHtml = `<div style="width: 28px;"></div>`;
       }
 
       div.innerHTML = `
-        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
+        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 80px; color: var(--primary-text-color);">${mObj.name}</div>
         <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
         <div style="flex: 1;" title="PV-Ertrag in kWh">${pvFieldHtml}</div>
+        <div>${syncBtnHtml}</div>
         <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input wide-input" data-index="${index}" value="${savedAbschlag}" ${disabledAttr}></div>
       `;
       grid.appendChild(div);
@@ -624,6 +634,50 @@ class StromAbrechnungCard extends HTMLElement {
         });
       });
     }
+
+    // Event Listener für den Live-Sync Button (🔄)
+    this.querySelectorAll('.sync-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        if (!this._hass) {
+          alert("Keine Home Assistant Verbindung verfügbar.");
+          return;
+        }
+
+        const index = e.currentTarget.dataset.index;
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+
+        const sensorId = localStorage.getItem('strom_config_sensor') || this.config.sensor;
+        const pvSensorId = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
+
+        let syncedCount = 0;
+        let message = "Live-Daten übernommen:\n";
+
+        if (sensorId && this._hass.states[sensorId]) {
+          const val = parseFloat(this._hass.states[sensorId].state);
+          if (!isNaN(val)) {
+            localStorage.setItem(`strom_kwh_${yearKeyPrefix}_${index}`, val);
+            syncedCount++;
+            message += `• Netz: ${val} kWh (${sensorId})\n`;
+          }
+        }
+
+        if (pvSensorId && this._hass.states[pvSensorId]) {
+          const pvVal = parseFloat(this._hass.states[pvSensorId].state);
+          if (!isNaN(pvVal)) {
+            localStorage.setItem(`strom_pv_${yearKeyPrefix}_${index}`, pvVal);
+            syncedCount++;
+            message += `• PV: ${pvVal} kWh (${pvSensorId})\n`;
+          }
+        }
+
+        if (syncedCount > 0) {
+          alert(message);
+          this.renderGrid();
+        } else {
+          alert("Konnte keine gültigen Werte von den Sensoren lesen. Bitte Sensoren in den Einstellungen prüfen.");
+        }
+      });
+    });
 
     this.querySelectorAll('.month-input').forEach(input => {
       input.addEventListener('input', (e) => {
