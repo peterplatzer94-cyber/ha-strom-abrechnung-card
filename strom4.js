@@ -168,12 +168,12 @@ class StromAbrechnungCard extends HTMLElement {
           </div>
 
           <div style="margin-bottom: 10px;">
-            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Netzbezug Winter-Prognoseprofil (Nov–Feb Faktor):</label>
+            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Netzbezug Winter-Faktor (Dez–Feb):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-              <option value="1.0" ${currentWinterProfile === "1.0" ? 'selected' : ''}>Wenig (Faktor 1.0 - wie Vormonate)</option>
-              <option value="1.5" ${currentWinterProfile === "1.5" ? 'selected' : ''}>Mittel / Normal (Faktor 1.5)</option>
-              <option value="2.2" ${currentWinterProfile === "2.2" ? 'selected' : ''}>Viel (Faktor 2.2)</option>
-              <option value="3.2" ${currentWinterProfile === "3.2" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 3.2 - Starker Anstieg)</option>
+              <option value="1.2" ${currentWinterProfile === "1.2" ? 'selected' : ''}>Wenig (Faktor 1.2 - leichter Winteranstieg)</option>
+              <option value="1.7" ${currentWinterProfile === "1.7" ? 'selected' : ''}>Mittel / Normal (Faktor 1.7)</option>
+              <option value="2.3" ${currentWinterProfile === "2.3" ? 'selected' : ''}>Viel (Faktor 2.3 - Hoher Winterbedarf)</option>
+              <option value="3.0" ${currentWinterProfile === "3.0" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 3.0 - Massiver Winterbedarf)</option>
             </select>
           </div>
 
@@ -308,7 +308,7 @@ class StromAbrechnungCard extends HTMLElement {
       });
     }
 
-    // Live-Update der Prognose in der Tabelle und Gesamtsumme sofort bei Auswahl im Dropdown
+    // Live-Update direkt bei Änderung im Dropdown
     if (winterProfileSelect) {
       winterProfileSelect.addEventListener('change', (e) => {
         localStorage.setItem('strom_config_winter_profile', e.target.value);
@@ -648,17 +648,16 @@ class StromAbrechnungCard extends HTMLElement {
     const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
     
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
-      // Exakter Basis-Durchschnitt aus deinen eingetragenen Vormonaten
       const baseAvgKwh = pastKwhTotal / pastMonthsCount;
       const winterMultiplier = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
 
-      // --- Saisonaler Faktor, der sich exakt auf deine Vormonats-Basis stützt ---
+      // --- Saisonaler Faktor: Winter (Dez, Jan, Feb) nutzt nun sauber den ausgewählten Multiplikator auf die Basis ---
       const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterMultiplier; // Dez, Jan, Feb nutzen deinen Menü-Faktor direkt auf die Vormonats-Basis!
-        if ([2, 10].includes(mIndex)) return 1.25;                  // März, November
-        if ([3, 9].includes(mIndex)) return 1.05;                   // April, Oktober
-        if ([4, 8].includes(mIndex)) return 0.90;                   // Mai, September
-        return 0.75;                                                // Juni, Juli, August
+        if ([11, 0, 1].includes(mIndex)) return winterMultiplier;      // Dezember, Januar, Februar (Höchster Verbrauch)
+        if ([2, 10].includes(mIndex)) return 1.25;                      // März, November (Übergang)
+        if ([3, 9].includes(mIndex)) return 1.00;                       // April, Oktober
+        if ([4, 8].includes(mIndex)) return 0.85;                       // Mai, September
+        return 0.70;                                                    // Juni, Juli, August (Sommer-Tief)
       };
 
       const pvWp = parseFloat(localStorage.getItem('strom_config_pv_wp')) || this.config.pv_wp;
