@@ -82,7 +82,7 @@ class StromAbrechnungCard extends HTMLElement {
     const currentPvSensor = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
     const currentPrice = localStorage.getItem('strom_config_price') ?? this.config.price;
     const currentBaseFee = localStorage.getItem('strom_config_base_fee') ?? this.config.base_fee;
-    const currentDefaultAbschlag = localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag;
+    const currentDefaultAbschlag = parseFloat(localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag);
     const currentWinterProfile = localStorage.getItem('strom_config_winter_profile') ?? this.config.winter_profile;
     const currentDeadline = localStorage.getItem('strom_config_deadline') ?? this.config.billing_deadline;
     const currentPvWp = localStorage.getItem('strom_config_pv_wp') ?? this.config.pv_wp;
@@ -262,6 +262,20 @@ class StromAbrechnungCard extends HTMLElement {
               <span>🔮 Realistische Jahresend-Prognose:</span>
             </div>
             <div id="forecast_text" style="color: var(--secondary-text-color);">Berechne Prognose...</div>
+            
+            <!-- ABGESCHLAG-SIMULATOR -->
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--divider-color);">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom: 6px;">
+                <span style="font-weight: 500; color: var(--primary-text-color);">🎚️ Abschlag-Simulator:</span>
+                <span id="sim_val_label" style="font-weight: 600; color: var(--primary-color);">${currentDefaultAbschlag.toFixed(2)} € / Monat</span>
+              </div>
+              <input type="range" id="abschlag_slider" min="50" max="500" step="5" value="${currentDefaultAbschlag}" style="width: 100%; cursor: pointer; accent-color: var(--primary-color);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.85em;">
+                <span id="sim_result_text" style="color: var(--secondary-text-color);">Simulierte Bilanz: --</span>
+                <button id="apply_sim_btn" type="button" style="padding: 4px 10px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em;" title="Diesen Wert als neuen Standard-Abschlag auf alle Monate anwenden">Übernehmen</button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -345,6 +359,41 @@ class StromAbrechnungCard extends HTMLElement {
             alert("Falsches Passwort!");
           }
         }
+      });
+    }
+
+    // Event-Listener für den Abschlag-Simulator Regler
+    const slider = this.querySelector('#abschlag_slider');
+    if (slider) {
+      slider.addEventListener('input', () => {
+        this.calculateTotals();
+      });
+    }
+
+    // Button zum Übernehmen des simulierten Abschlags
+    const applySimBtn = this.querySelector('#apply_sim_btn');
+    if (applySimBtn) {
+      applySimBtn.addEventListener('click', () => {
+        const savedPass = localStorage.getItem('strom_config_password') || this.config.admin_password;
+        if (savedPass && savedPass.trim() !== "" && !this._unlocked) {
+          const entered = prompt("PIN erforderlich, um den Abschlag zu übernehmen:");
+          if (entered !== savedPass) {
+            alert("Falsches Passwort!");
+            return;
+          }
+          this._unlocked = true;
+        }
+
+        const sliderVal = this.querySelector('#abschlag_slider').value;
+        const activeYearStr = this.getActiveBillingYear();
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+
+        localStorage.setItem('strom_config_default_abschlag', sliderVal);
+        for (let i = 0; i < 12; i++) {
+          localStorage.setItem(`strom_abschlag_${yearKeyPrefix}_${i}`, sliderVal);
+        }
+        alert(`Abschlag von ${sliderVal} € wurde erfolgreich auf alle Monate übertragen!`);
+        this.render();
       });
     }
 
@@ -598,7 +647,6 @@ class StromAbrechnungCard extends HTMLElement {
       let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" ${disabledAttr}>`;
       let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh" ${disabledAttr}>`;
 
-      // Live-Sync Button für den aktuellen Monat einfügen, sofern nicht gesperrt
       let syncBtnHtml = `<div style="width: 28px;"></div>`;
       if (isCurrentMonth && !isLocked) {
         syncBtnHtml = `<button type="button" class="sync-btn" data-index="${index}" title="Aktuellen Live-Sensor-Wert aus Home Assistant übernehmen">🔄</button>`;
@@ -635,7 +683,6 @@ class StromAbrechnungCard extends HTMLElement {
       });
     }
 
-    // Event Listener für den Live-Sync Button (🔄)
     this.querySelectorAll('.sync-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         if (!this._hass) {
@@ -674,7 +721,7 @@ class StromAbrechnungCard extends HTMLElement {
           alert(message);
           this.renderGrid();
         } else {
-          alert("Konnte keine gültigen Werte von den Sensoren lesen. Bitte Sensoren in den Einstellungen prüfen.");
+          alert("Konnte keine gültigen Werte von den Sensoren lesen.");
         }
       });
     });
@@ -850,6 +897,24 @@ class StromAbrechnungCard extends HTMLElement {
                      `-----------------------------------<br>` +
                      `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${forecastPvLabel}</strong><br>` +
                      `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
+
+      // --- SIMULATOR BERECHNUNG ---
+      const slider = this.querySelector('#abschlag_slider');
+      const simLabel = this.querySelector('#sim_val_label');
+      const simResultText = this.querySelector('#sim_result_text');
+      
+      if (slider && simLabel && simResultText) {
+        const simMonthly = parseFloat(slider.value) || 0;
+        simLabel.innerText = `${simMonthly.toFixed(2)} € / Monat`;
+
+        // Simulierte Gesamtabschläge für das ganze Jahr (12 Monate)
+        const simTotalPaid = simMonthly * 12;
+        const simBalance = simTotalPaid - predictedTotalCost;
+        const simFormatted = `${simBalance >= 0 ? '+' : ''}${simBalance.toFixed(2)} €`;
+        const simStatus = simBalance >= 0 ? 'Rückzahlung' : 'Nachzahlung';
+
+        simResultText.innerHTML = `Simulierte Bilanz: <strong style="color: ${simBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${simFormatted} (${simStatus})</strong>`;
+      }
     }
 
     if (this.querySelector('#total_paid')) {
