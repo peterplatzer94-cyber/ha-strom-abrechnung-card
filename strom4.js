@@ -13,6 +13,7 @@ class StromAbrechnungCard extends HTMLElement {
       billing_deadline: "",
       feed_in_active: false,
       feed_in_price: 0.082,
+      pv_wp: 4000, // Standard: 4000 Wp (4 kWp)
       ...config
     };
     this.requestUpdate();
@@ -78,6 +79,7 @@ class StromAbrechnungCard extends HTMLElement {
     const currentDefaultAbschlag = localStorage.getItem('strom_config_default_abschlag') ?? this.config.default_abschlag;
     const currentWinterProfile = localStorage.getItem('strom_config_winter_profile') ?? this.config.winter_profile;
     const currentDeadline = localStorage.getItem('strom_config_deadline') ?? this.config.billing_deadline;
+    const currentPvWp = localStorage.getItem('strom_config_pv_wp') ?? this.config.pv_wp;
     
     const savedFeedInActive = localStorage.getItem('strom_config_feed_in_active');
     const currentFeedInActive = savedFeedInActive !== null ? savedFeedInActive === 'true' : this.config.feed_in_active;
@@ -147,6 +149,12 @@ class StromAbrechnungCard extends HTMLElement {
               <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Abrechnungs-Stichtag:</label>
               <input type="date" id="cfg_deadline" value="${currentDeadline}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
             </div>
+          </div>
+
+          <!-- NEU: PV-Leistung in Wp -->
+          <div style="margin-bottom: 10px;">
+            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">PV-Leistung Gesamtanlage (Wp, z.B. 4000):</label>
+            <input type="number" step="100" id="cfg_pv_wp" value="${currentPvWp}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
           </div>
 
           <div style="background: var(--card-background-color); padding: 10px; border-radius: 8px; border: 1px solid var(--divider-color); margin-bottom: 10px;">
@@ -388,6 +396,7 @@ class StromAbrechnungCard extends HTMLElement {
         const newDeadline = this.querySelector('#cfg_deadline').value;
         const newFeedInActive = this.querySelector('#cfg_feed_in_active').checked;
         const newFeedInPrice = parseFloat(this.querySelector('#cfg_feed_in_price').value) || 0;
+        const newPvWp = parseFloat(this.querySelector('#cfg_pv_wp').value) || 4000;
         
         const sensorPicker = this.querySelector('#cfg_sensor_picker');
         const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
@@ -404,6 +413,7 @@ class StromAbrechnungCard extends HTMLElement {
         localStorage.setItem('strom_config_deadline', newDeadline);
         localStorage.setItem('strom_config_feed_in_active', newFeedInActive);
         localStorage.setItem('strom_config_feed_in_price', newFeedInPrice);
+        localStorage.setItem('strom_config_pv_wp', newPvWp);
         localStorage.setItem('strom_config_sensor', newSensor);
         localStorage.setItem('strom_config_pv_sensor', newPvSensor);
 
@@ -414,6 +424,7 @@ class StromAbrechnungCard extends HTMLElement {
         this.config.billing_deadline = newDeadline;
         this.config.feed_in_active = newFeedInActive;
         this.config.feed_in_price = newFeedInPrice;
+        this.config.pv_wp = newPvWp;
         this.config.sensor = newSensor;
         this.config.pv_sensor = newPvSensor;
 
@@ -427,6 +438,7 @@ class StromAbrechnungCard extends HTMLElement {
     const savedAbschlag = localStorage.getItem('strom_config_default_abschlag');
     const savedWinterProfile = localStorage.getItem('strom_config_winter_profile');
     const savedDeadline = localStorage.getItem('strom_config_deadline');
+    const savedPvWp = localStorage.getItem('strom_config_pv_wp');
     const savedSensor = localStorage.getItem('strom_config_sensor');
     const savedPvSensor = localStorage.getItem('strom_config_pv_sensor');
 
@@ -435,6 +447,7 @@ class StromAbrechnungCard extends HTMLElement {
     if (savedAbschlag !== null) this.config.default_abschlag = parseFloat(savedAbschlag);
     if (savedWinterProfile !== null) this.config.winter_profile = savedWinterProfile;
     if (savedDeadline !== null) this.config.billing_deadline = savedDeadline;
+    if (savedPvWp !== null) this.config.pv_wp = parseFloat(savedPvWp);
     if (savedSensor) this.config.sensor = savedSensor;
     if (savedPvSensor) this.config.pv_sensor = savedPvSensor;
   }
@@ -627,37 +640,45 @@ class StromAbrechnungCard extends HTMLElement {
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
       const calculatedAvg = pastKwhTotal / pastMonthsCount;
       const baseAvgKwh = Math.max(calculatedAvg, 520); 
-      // Realistischer Basiswert für PV aus den bisherigen Monaten ermitteln (Minimum auf Sommer-Verhältnisse geeicht, aber im Winter deckt der Faktor das ab)
-      const baseAvgPv = pastPvTotal > 0 ? (pastPvTotal / pastMonthsCount) : 300; 
       const remainingMonths = 12 - pastMonthsCount;
       
       const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
 
+      // --- Aggressiverer Extrem-Modus / Winter-Faktor für den Netzbezug ---
       const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterFactor;     
-        if ([2, 3, 10].includes(mIndex)) return 1.2;              
-        if ([9].includes(mIndex)) return 1.1;                     
-        if ([4, 8].includes(mIndex)) return 0.95;                   
-        return 0.75;                                              
+        if ([11, 0, 1].includes(mIndex)) return winterFactor * 1.15; // Dez, Jan, Feb (Zieht im Extrem-Modus stark an!)
+        if ([2, 3, 10].includes(mIndex)) return 1.25;             // März, April, November
+        if ([9].includes(mIndex)) return 1.1;                    // Oktober
+        if ([4, 8].includes(mIndex)) return 0.95;                  // Mai, September
+        return 0.75;                                             // Sommer-Monate
       };
 
-      // --- Realistische PV-Faktoren (Dez, Jan, Feb fast auf 0!) ---
-      const getMonthPvFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return 0.08;             // Dezember, Januar, Februar (Fast 0 Ertrag)
-        if ([2, 10].includes(mIndex)) return 0.4;                 // März, November (Übergang)
-        if ([3, 9].includes(mIndex)) return 0.8;                  // April, Oktober
-        if ([4, 8].includes(mIndex)) return 1.3;                  // Mai, September
-        return 1.6;                                               // Juni, Juli, August (Sommer-Peak)
-      };
+      // --- Physikalisch genaue PV-Verteilung basierend auf der Wp-Leistung (Summe der Anteile über das Jahr = ca. 950 kWh pro 1 kWp in DE) ---
+      const pvWp = parseFloat(localStorage.getItem('strom_config_pv_wp')) || this.config.pv_wp;
+      const annualEstimatedPv = (pvWp / 1000) * 950; // Typischer Jahresertrag in Süddeutschland/Bayern pro kWp
+
+      // Prozentuale Verteilung des PV-Ertrags auf die 12 Monate (Jan bis Dez)
+      const monthlyPvDistribution = [
+        0.03, // Januar (3%)
+        0.05, // Februar (5%)
+        0.08, // März (8%)
+        0.11, // April (11%)
+        0.14, // Mai (14%)
+        0.15, // Juni (15%)
+        0.14, // Juli (14%)
+        0.12, // August (12%)
+        0.09, // September (9%)
+        0.05, // Oktober (5%)
+        0.03, // November (3%)
+        0.02  // Dezember (2%)
+      ];
 
       let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let i = 0; i < 12; i++) {
         if (i > activeLimit) {
           const kF = getMonthKwhFactor(tempCursorMonth);
-          const pF = getMonthPvFactor(tempCursorMonth);
-
           const monthEstKwh = baseAvgKwh * kF;
-          const monthEstPv = baseAvgPv * pF;
+          const monthEstPv = annualEstimatedPv * monthlyPvDistribution[tempCursorMonth];
 
           const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${i}"]`);
           const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${i}"]`);
@@ -673,10 +694,8 @@ class StromAbrechnungCard extends HTMLElement {
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
       for (let r = 0; r < remainingMonths; r++) {
         const kF = getMonthKwhFactor(cursorMonth);
-        const pF = getMonthPvFactor(cursorMonth);
-
         estimatedRemainingKwh += (baseAvgKwh * kF);
-        estimatedRemainingPv += (baseAvgPv * pF);
+        estimatedRemainingPv += (annualEstimatedPv * monthlyPvDistribution[cursorMonth]);
 
         cursorMonth = (cursorMonth + 1) % 12;
       }
@@ -732,7 +751,7 @@ class StromAbrechnungCard extends HTMLElement {
       this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
       
       const balanceElem = this.querySelector('#balance_result');
-      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.toFixed(2)} €`;
+      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.jected ? '' : balance.toFixed(2)} €`;
       balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
 
       const forecastElem = this.querySelector('#forecast_text');
