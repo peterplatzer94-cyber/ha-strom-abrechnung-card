@@ -289,6 +289,7 @@ class StromAbrechnungCard extends HTMLElement {
     const settingsPanel = this.querySelector('#settings_panel');
     const closeSettings = this.querySelector('#close_settings');
     const saveBtn = this.querySelector('#save_settings_btn');
+    const winterProfileSelect = this.querySelector('#cfg_winter_profile'); // NEU: Live-Listener
     const applyAllBtn = this.querySelector('#apply_all_abschlag');
     const exportJsonBtn = this.querySelector('#export_json_btn');
     const importJsonBtn = this.querySelector('#import_json_btn');
@@ -304,6 +305,15 @@ class StromAbrechnungCard extends HTMLElement {
     if (closeSettings && settingsPanel) {
       closeSettings.addEventListener('click', () => {
         settingsPanel.style.display = 'none';
+      });
+    }
+
+    // NEU: Wenn man im Dropdown das Profil ändert, wird es sofort in localStorage gespeichert und die Prognose aktualisiert sich live!
+    if (winterProfileSelect) {
+      winterProfileSelect.addEventListener('change', (e) => {
+        localStorage.setItem('strom_config_winter_profile', e.target.value);
+        this.config.winter_profile = e.target.value;
+        this.renderGrid(); // Aktualisiert die Vorschau-Werte in der Tabelle & Gesamtsumme sofort
       });
     }
 
@@ -643,16 +653,14 @@ class StromAbrechnungCard extends HTMLElement {
       
       const winterMultiplier = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
 
-      // --- Hier greift das Auswahlprofil jetzt direkt und kraftvoll auf den Netzbezug im Winter (Nov, Dez, Jan, Feb) ---
       const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterMultiplier;      // Dezember, Januar, Februar (Multiplikator direkt aus der Auswahl!)
-        if ([2, 10].includes(mIndex)) return 1.35;                      // März, November (Übergang)
+        if ([11, 0, 1].includes(mIndex)) return winterMultiplier;      // Dezember, Januar, Februar (Nutzt exakt den gewählten Multiplikator)
+        if ([2, 10].includes(mIndex)) return 1.35;                      // März, November
         if ([3, 9].includes(mIndex)) return 1.10;                       // April, Oktober
         if ([4, 8].includes(mIndex)) return 0.85;                       // Mai, September
-        return 0.65;                                                    // Juni, Juli, August (Sommer-Tief)
+        return 0.65;                                                    // Juni, Juli, August
       };
 
-      // --- Perfekte, physikalisch exakte PV-Tabelle (Sommer ~500 kWh, Winter ~56 kWh bei 4 kWp) ---
       const pvWp = parseFloat(localStorage.getItem('strom_config_pv_wp')) || this.config.pv_wp;
       const kwp = pvWp / 1000;
 
@@ -662,13 +670,13 @@ class StromAbrechnungCard extends HTMLElement {
         50,  // März (~200 kWh)
         90,  // April (~360 kWh)
         115, // Mai (~460 kWh)
-        125, // Juni (~500 kWh) -> Exakt der gewünschte Sommer-Peak!
+        125, // Juni (~500 kWh)
         115, // Juli (~460 kWh)
         95,  // August (~380 kWh)
         70,  // September (~280 kWh)
         40,  // Oktober (~160 kWh)
         18,  // November (~72 kWh)
-        14   // Dezember (~56 kWh) -> Echter Wintertiefpunkt!
+        14   // Dezember (~56 kWh)
       ];
 
       let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
