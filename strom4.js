@@ -579,13 +579,34 @@ class StromAbrechnungCard extends HTMLElement {
 
     months.forEach((mObj, index) => {
       const yearKeyPrefix = activeYearStr.replace('/', '_');
-      const savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`) ?? defaultAbschlag;
+      
+      let savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`);
       
       let savedKwh = localStorage.getItem(`strom_kwh_${yearKeyPrefix}_${index}`) ?? '';
       let savedPv = localStorage.getItem(`strom_pv_${yearKeyPrefix}_${index}`) ?? '';
 
       const isCurrentMonth = (index === currentMonthOffset);
       const isFutureMonth = (index > currentMonthOffset && activeYearStr === this.getCurrentActiveBillingYear());
+
+      if (savedAbschlag === null) {
+        savedAbschlag = defaultAbschlag;
+      }
+
+      if (isCurrentMonth && !savedKwh && this._hass) {
+        const sensorId = localStorage.getItem('strom_config_sensor') || this.config.sensor;
+        if (sensorId && this._hass.states[sensorId]) {
+          const val = parseFloat(this._hass.states[sensorId].state);
+          if (!isNaN(val)) savedKwh = val;
+        }
+      }
+
+      if (isCurrentMonth && !savedPv && this._hass) {
+        const pvSensorId = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
+        if (pvSensorId && this._hass.states[pvSensorId]) {
+          const pvVal = parseFloat(this._hass.states[pvSensorId].state);
+          if (!isNaN(pvVal)) savedPv = pvVal;
+        }
+      }
 
       const rowBackground = isCurrentMonth ? 'var(--card-background-color)' : 'var(--secondary-background-color)';
       const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
@@ -829,9 +850,25 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
-      // --- AUTOMATISCHE ABSCHLAGS-BERRECHNUNG FÜR NULL-BILANZ ---
-      // Gesamtkosten geteilt durch 12 Monate ergibt den exakten monatlichen Abschlag für 0,00 € Bilanz
-      const recommendedMonthlyAbschlag = predictedTotalCost / 12;
+      // --- AUTOMATISCHER EMPFOHLENER ABSCHLAG FÜR DIE ZUKÜNFTIGEN MONATE ---
+      // Berechnet, was in den noch verbleibenden Monaten gezahlt werden muss, 
+      // damit Gesamteinnahmen (bisher bezahlt + restliche Monate) genau den voraussichtlichen Gesamtkosten entsprechen.
+      let alreadyPaidSoFar = 0;
+      abschlagInputs.forEach((input, idx) => {
+        if (idx <= pastMonthsCount - 1) {
+          alreadyPaidSoFar += parseFloat(input.value) || 0;
+        }
+      });
+
+      const missingAmountForZero = predictedTotalCost - alreadyPaidSoFar;
+      const recommendedFutureAbschlag = remainingMonths > 0 ? Math.max(0, missingAmountForZero / remainingMonths) : 0;
+
+      // Trage den empfohlenen Abschlag automatisch in die noch kommenden Monate ein (sofern nicht manuell überschrieben oder als Vorschau)
+      abschlagInputs.forEach((input, idx) => {
+        if (idx >= pastMonthsCount) {
+          input.value = recommendedFutureAbschlag.toFixed(2);
+        }
+      });
 
       let deadlineInfo = "";
       if (deadlineStr) {
@@ -852,7 +889,7 @@ class StromAbrechnungCard extends HTMLElement {
                      `-----------------------------------<br>` +
                      `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${forecastPvLabel}</strong><br>` +
                      `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong><br>` +
-                     `🎯 <strong>Empfohlener Abschlag (Null-Bilanz):</strong> <span style="color: var(--primary-color); font-weight: 600;">${recommendedMonthlyAbschlag.toFixed(2)} € / Monat</span>`;
+                     `🎯 <strong>Empfohlener Abschlag (Restmonate):</strong> <span style="color: var(--primary-color); font-weight: 600;">${recommendedFutureAbschlag.toFixed(2)} € / Monat</span>`;
     }
 
     if (this.querySelector('#total_paid')) {
