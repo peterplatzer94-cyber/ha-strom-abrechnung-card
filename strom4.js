@@ -1,4 +1,9 @@
 class StromAbrechnungCard extends HTMLElement {
+  constructor() {
+    super();
+    this._unlocked = false; // Status, ob die Bearbeitung aktuell per PIN freigeschaltet ist
+  }
+
   setConfig(config) {
     if (!config) {
       throw new Error("Ungültige Konfiguration");
@@ -14,6 +19,7 @@ class StromAbrechnungCard extends HTMLElement {
       feed_in_active: false,
       feed_in_price: 0.082,
       pv_wp: 4000,
+      admin_password: "", // Standardmäßig kein Passwort gesetzt
       ...config
     };
     this.requestUpdate();
@@ -80,12 +86,17 @@ class StromAbrechnungCard extends HTMLElement {
     const currentWinterProfile = localStorage.getItem('strom_config_winter_profile') ?? this.config.winter_profile;
     const currentDeadline = localStorage.getItem('strom_config_deadline') ?? this.config.billing_deadline;
     const currentPvWp = localStorage.getItem('strom_config_pv_wp') ?? this.config.pv_wp;
+    const currentPassword = localStorage.getItem('strom_config_password') ?? this.config.admin_password;
     
     const savedFeedInActive = localStorage.getItem('strom_config_feed_in_active');
     const currentFeedInActive = savedFeedInActive !== null ? savedFeedInActive === 'true' : this.config.feed_in_active;
     const currentFeedInPrice = localStorage.getItem('strom_config_feed_in_price') ?? this.config.feed_in_price;
 
     const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+    // Schloss-Symbol für den Header je nach Sperrstatus
+    const hasPassword = currentPassword && currentPassword.trim() !== "";
+    const lockIcon = hasPassword ? (this._unlocked ? "🔓" : "🔒") : "";
 
     this.innerHTML = `
       <ha-card style="padding: 16px; border-radius: var(--ha-card-border-radius, 12px); box-shadow: var(--ha-card-box-shadow, none); border: 1px solid var(--divider-color);">
@@ -97,7 +108,10 @@ class StromAbrechnungCard extends HTMLElement {
               ⚡
             </div>
             <div>
-              <div style="font-size: 1.1em; font-weight: 500; color: var(--primary-text-color);">Strom- & PV-Bilanz</div>
+              <div style="font-size: 1.1em; font-weight: 500; color: var(--primary-text-color); display: flex; align-items: center; gap: 6px;">
+                <span>Strom- & PV-Bilanz</span>
+                <span id="lock_status_btn" style="cursor: pointer; font-size: 0.9em;" title="${hasPassword ? (this._unlocked ? 'Gesperrt (Klick zum Sperren)' : 'Geschützt (Klick zum Entsperren)') : 'Kein Passwort aktiv'}">${lockIcon}</span>
+              </div>
               <div style="font-size: 0.8em; color: var(--secondary-text-color);">Abrechnungsjahr: ${activeYearStr}</div>
             </div>
           </div>
@@ -107,7 +121,7 @@ class StromAbrechnungCard extends HTMLElement {
         <!-- EINSTELLUNGS-MENÜ -->
         <div id="settings_panel" style="display: none; background: var(--secondary-background-color); padding: 16px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--divider-color);">
           <div style="font-weight: 500; margin-bottom: 12px; font-size: 0.95em; display: flex; justify-content: space-between; align-items: center; color: var(--primary-text-color);">
-            <span>⚙️ Karteneinstellungen & Backup</span>
+            <span>⚙️ Karteneinstellungen & Sicherheit</span>
             <span id="close_settings" style="cursor: pointer; font-size: 1.2em; padding: 0 4px;" title="Schließen">✕</span>
           </div>
           
@@ -151,9 +165,15 @@ class StromAbrechnungCard extends HTMLElement {
             </div>
           </div>
 
-          <div style="margin-bottom: 10px;">
-            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">PV-Leistung Gesamtanlage (Wp, z.B. 4000):</label>
-            <input type="number" step="100" id="cfg_pv_wp" value="${currentPvWp}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">PV-Leistung (Wp):</label>
+              <input type="number" step="100" id="cfg_pv_wp" value="${currentPvWp}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
+            </div>
+            <div>
+              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;" title="Leer lassen für kein Passwort">Sicherheits-PIN / Passwort:</label>
+              <input type="password" id="cfg_password" value="${currentPassword}" placeholder="Frei / Ohne PIN" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
+            </div>
           </div>
 
           <div style="background: var(--card-background-color); padding: 10px; border-radius: 8px; border: 1px solid var(--divider-color); margin-bottom: 10px;">
@@ -248,7 +268,7 @@ class StromAbrechnungCard extends HTMLElement {
 
       </ha-card>
 
-      <!-- CSS für komfortable Eingabefelder -->
+      <!-- CSS für komfortable Eingabefelder und Sperr-Optik -->
       <style>
         .wide-input {
           width: 100%;
@@ -261,6 +281,11 @@ class StromAbrechnungCard extends HTMLElement {
           color: var(--primary-text-color);
           text-align: right;
           box-sizing: border-box;
+        }
+        .wide-input:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+          background: var(--secondary-background-color);
         }
       </style>
     `;
@@ -279,6 +304,33 @@ class StromAbrechnungCard extends HTMLElement {
 
     const pvSensorPicker = this.querySelector('#cfg_pv_sensor_picker');
     if (pvSensorPicker && this._hass) pvSensorPicker.hass = this._hass;
+
+    // Klick auf das Schloss-Symbol zum Entsperren / Sperren
+    const lockBtn = this.querySelector('#lock_status_btn');
+    if (lockBtn) {
+      lockBtn.addEventListener('click', () => {
+        const savedPass = localStorage.getItem('strom_config_password') || this.config.admin_password;
+        if (!savedPass || savedPass.trim() === "") {
+          alert("Es ist kein Passwort in den Einstellungen hinterlegt.");
+          return;
+        }
+
+        if (this._unlocked) {
+          this._unlocked = false;
+          alert("Werte wurden wieder gesperrt.");
+          this.renderGrid();
+        } else {
+          const entered = prompt("Bitte PIN eingeben, um Werte zu entsperren:");
+          if (entered === savedPass) {
+            this._unlocked = true;
+            alert("Erfolgreich entsperrt!");
+            this.renderGrid();
+          } else if (entered !== null) {
+            alert("Falsches Passwort!");
+          }
+        }
+      });
+    }
 
     this.initCard();
     this.initSettingsPanel();
@@ -308,7 +360,6 @@ class StromAbrechnungCard extends HTMLElement {
       });
     }
 
-    // Sofortiges Live-Update der Prognose bei Auswahl im Dropdown
     if (winterProfileSelect) {
       winterProfileSelect.addEventListener('change', (e) => {
         localStorage.setItem('strom_config_winter_profile', e.target.value);
@@ -319,6 +370,16 @@ class StromAbrechnungCard extends HTMLElement {
 
     if (applyAllBtn) {
       applyAllBtn.addEventListener('click', () => {
+        const savedPass = localStorage.getItem('strom_config_password') || this.config.admin_password;
+        if (savedPass && savedPass.trim() !== "" && !this._unlocked) {
+          const entered = prompt("PIN erforderlich, um Aktionen auszuführen:");
+          if (entered !== savedPass) {
+            alert("Falsches Passwort!");
+            return;
+          }
+          this._unlocked = true;
+        }
+
         const val = this.querySelector('#cfg_default_abschlag').value;
         const activeYearStr = this.getActiveBillingYear();
         const yearKeyPrefix = activeYearStr.replace('/', '_');
@@ -406,6 +467,7 @@ class StromAbrechnungCard extends HTMLElement {
         const newFeedInActive = this.querySelector('#cfg_feed_in_active').checked;
         const newFeedInPrice = parseFloat(this.querySelector('#cfg_feed_in_price').value) || 0;
         const newPvWp = parseFloat(this.querySelector('#cfg_pv_wp').value) || 4000;
+        const newPassword = this.querySelector('#cfg_password').value;
         
         const sensorPicker = this.querySelector('#cfg_sensor_picker');
         const newSensor = sensorPicker ? sensorPicker.value : this.config.sensor;
@@ -423,6 +485,7 @@ class StromAbrechnungCard extends HTMLElement {
         localStorage.setItem('strom_config_feed_in_active', newFeedInActive);
         localStorage.setItem('strom_config_feed_in_price', newFeedInPrice);
         localStorage.setItem('strom_config_pv_wp', newPvWp);
+        localStorage.setItem('strom_config_password', newPassword);
         localStorage.setItem('strom_config_sensor', newSensor);
         localStorage.setItem('strom_config_pv_sensor', newPvSensor);
 
@@ -434,6 +497,7 @@ class StromAbrechnungCard extends HTMLElement {
         this.config.feed_in_active = newFeedInActive;
         this.config.feed_in_price = newFeedInPrice;
         this.config.pv_wp = newPvWp;
+        this.config.admin_password = newPassword;
         this.config.sensor = newSensor;
         this.config.pv_sensor = newPvSensor;
 
@@ -448,6 +512,7 @@ class StromAbrechnungCard extends HTMLElement {
     const savedWinterProfile = localStorage.getItem('strom_config_winter_profile');
     const savedDeadline = localStorage.getItem('strom_config_deadline');
     const savedPvWp = localStorage.getItem('strom_config_pv_wp');
+    const savedPassword = localStorage.getItem('strom_config_password');
     const savedSensor = localStorage.getItem('strom_config_sensor');
     const savedPvSensor = localStorage.getItem('strom_config_pv_sensor');
 
@@ -457,6 +522,7 @@ class StromAbrechnungCard extends HTMLElement {
     if (savedWinterProfile !== null) this.config.winter_profile = savedWinterProfile;
     if (savedDeadline !== null) this.config.billing_deadline = savedDeadline;
     if (savedPvWp !== null) this.config.pv_wp = parseFloat(savedPvWp);
+    if (savedPassword !== null) this.config.admin_password = savedPassword;
     if (savedSensor) this.config.sensor = savedSensor;
     if (savedPvSensor) this.config.pv_sensor = savedPvSensor;
   }
@@ -492,6 +558,10 @@ class StromAbrechnungCard extends HTMLElement {
     if (currentMonthOffset < 0) currentMonthOffset = -999;
     if (currentMonthOffset > 11) currentMonthOffset = 999;
 
+    // Prüfen, ob ein Passwort gesetzt ist und ob entsperrt wurde
+    const adminPass = localStorage.getItem('strom_config_password') || this.config.admin_password;
+    const isLocked = adminPass && adminPass.trim() !== "" && !this._unlocked;
+
     months.forEach((mObj, index) => {
       const yearKeyPrefix = activeYearStr.replace('/', '_');
       const savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`) ?? defaultAbschlag;
@@ -524,8 +594,10 @@ class StromAbrechnungCard extends HTMLElement {
       const div = document.createElement('div');
       div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 8px 10px; border-radius: 8px; gap: 8px; border: ${rowBorder};`;
       
-      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh">`;
-      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh">`;
+      const disabledAttr = isLocked ? 'disabled title="Gesperrt – Bitte oben links per PIN entsperren"' : '';
+
+      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh" ${disabledAttr}>`;
+      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh" ${disabledAttr}>`;
 
       if (isFutureMonth) {
         kwhFieldHtml = `<div class="forecast-kwh-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--secondary-text-color);">--</div>`;
@@ -536,10 +608,26 @@ class StromAbrechnungCard extends HTMLElement {
         <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
         <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
         <div style="flex: 1;" title="PV-Ertrag in kWh">${pvFieldHtml}</div>
-        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input wide-input" data-index="${index}" value="${savedAbschlag}"></div>
+        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input wide-input" data-index="${index}" value="${savedAbschlag}" ${disabledAttr}></div>
       `;
       grid.appendChild(div);
     });
+
+    // Wenn gesperrt, Klick auf die Felder fängt ab und fragt nach PIN
+    if (isLocked) {
+      grid.querySelectorAll('input').forEach(input => {
+        input.addEventListener('focus', (e) => {
+          e.target.blur();
+          const entered = prompt("🔐 Diese Werte sind gesperrt. Bitte PIN eingeben zum Entsperren:");
+          if (entered === adminPass) {
+            this._unlocked = true;
+            this.renderGrid();
+          } else if (entered !== null) {
+            alert("Falsches Passwort!");
+          }
+        });
+      });
+    }
 
     this.querySelectorAll('.month-input').forEach(input => {
       input.addEventListener('input', (e) => {
@@ -648,7 +736,6 @@ class StromAbrechnungCard extends HTMLElement {
     const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
     
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
-      // Basis-Durchschnitt aus den bisher eingetragenen Monaten
       const baseAvgKwh = pastKwhTotal / pastMonthsCount;
       const winterMultiplier = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
       const remainingMonths = 12 - pastMonthsCount;
@@ -659,20 +746,17 @@ class StromAbrechnungCard extends HTMLElement {
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
 
       for (let r = 0; r < remainingMonths; r++) {
-        // Wintermonate (Dez, Jan, Feb) kriegen den Multiplikator, alle anderen Monate laufen normal weiter
         let monthKwh = baseAvgKwh;
         if ([11, 0, 1].includes(cursorMonth)) {
           monthKwh *= winterMultiplier; 
         }
         estimatedRemainingKwh += monthKwh;
 
-        // PV-Prognose (konservativ im Winter, höher im Sommer)
         let monthPv = 100;
-        if ([11, 0, 1].includes(cursorMonth)) monthPv = 30; // Wintertief
-        else if ([5, 6, 7].includes(cursorMonth)) monthPv = 450; // Sommertiefpunkt/Peak
+        if ([11, 0, 1].includes(cursorMonth)) monthPv = 30;
+        else if ([5, 6, 7].includes(cursorMonth)) monthPv = 450;
         estimatedRemainingPv += monthPv;
 
-        // Zeige die Vorschau direkt in der Zeile an
         const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${pastMonthsCount + r}"]`);
         const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${pastMonthsCount + r}"]`);
         if (rowKwhDisp) rowKwhDisp.innerText = `~${monthKwh.toFixed(0)} kWh`;
@@ -736,7 +820,7 @@ class StromAbrechnungCard extends HTMLElement {
       balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
 
       const forecastElem = this.querySelector('#forecast_text');
-      if (forecastElem) forecastElem.innerHTML = forecastText;
+      if (forecastElem) forecastElem.innerHTML = forecastTest;
     }
   }
 
