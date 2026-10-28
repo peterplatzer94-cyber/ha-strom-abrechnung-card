@@ -13,7 +13,7 @@ class StromAbrechnungCard extends HTMLElement {
       billing_deadline: "",
       feed_in_active: false,
       feed_in_price: 0.082,
-      pv_wp: 4000, // Standard: 4000 Wp (4 kWp)
+      pv_wp: 4000,
       ...config
     };
     this.requestUpdate();
@@ -151,7 +151,6 @@ class StromAbrechnungCard extends HTMLElement {
             </div>
           </div>
 
-          <!-- NEU: PV-Leistung in Wp -->
           <div style="margin-bottom: 10px;">
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">PV-Leistung Gesamtanlage (Wp, z.B. 4000):</label>
             <input type="number" step="100" id="cfg_pv_wp" value="${currentPvWp}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
@@ -171,10 +170,10 @@ class StromAbrechnungCard extends HTMLElement {
           <div style="margin-bottom: 10px;">
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Verbrauchsprofil (Prognose-Faktor Nov–Feb):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-              <option value="1.15" ${currentWinterProfile === "1.15" ? 'selected' : ''}>Wenig (Faktor 1.15)</option>
-              <option value="1.45" ${currentWinterProfile === "1.45" ? 'selected' : ''}>Mittel / Normal (Faktor 1.45)</option>
-              <option value="1.80" ${currentWinterProfile === "1.80" ? 'selected' : ''}>Viel / Gaming & Heizen (Faktor 1.80)</option>
-              <option value="2.20" ${currentWinterProfile === "2.20" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 2.20)</option>
+              <option value="1.30" ${currentWinterProfile === "1.30" ? 'selected' : ''}>Wenig (Faktor 1.30)</option>
+              <option value="1.60" ${currentWinterProfile === "1.60" ? 'selected' : ''}>Mittel / Normal (Faktor 1.60)</option>
+              <option value="2.00" ${currentWinterProfile === "2.00" ? 'selected' : ''}>Viel / Gaming & Heizen (Faktor 2.00)</option>
+              <option value="2.50" ${currentWinterProfile === "2.50" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 2.50)</option>
             </select>
           </div>
 
@@ -644,33 +643,32 @@ class StromAbrechnungCard extends HTMLElement {
       
       const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
 
-      // --- Aggressiverer Extrem-Modus / Winter-Faktor für den Netzbezug ---
+      // --- Deutlich stärkere Gewichtung der Wintermonate im Netzbezug (besonders im Extrem-Modus) ---
       const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterFactor * 1.15; // Dez, Jan, Feb (Zieht im Extrem-Modus stark an!)
-        if ([2, 3, 10].includes(mIndex)) return 1.25;             // März, April, November
-        if ([9].includes(mIndex)) return 1.1;                    // Oktober
+        if ([11, 0, 1].includes(mIndex)) return winterFactor;      // Dezember, Januar, Februar (Nutzt den gewählten Profil-Faktor voll aus)
+        if ([2, 10].includes(mIndex)) return 1.35;               // März, November (Kühl / Übergang)
+        if ([3, 9].includes(mIndex)) return 1.15;                // April, Oktober
         if ([4, 8].includes(mIndex)) return 0.95;                  // Mai, September
-        return 0.75;                                             // Sommer-Monate
+        return 0.75;                                             // Juni, Juli, August (Sommer-Tief)
       };
 
-      // --- Physikalisch genaue PV-Verteilung basierend auf der Wp-Leistung (Summe der Anteile über das Jahr = ca. 950 kWh pro 1 kWp in DE) ---
+      // --- Realistische PV-Verteilung für eine 4000 Wp Anlage in Deutschland (Dez/Jan fast auf Null) ---
       const pvWp = parseFloat(localStorage.getItem('strom_config_pv_wp')) || this.config.pv_wp;
-      const annualEstimatedPv = (pvWp / 1000) * 950; // Typischer Jahresertrag in Süddeutschland/Bayern pro kWp
+      const annualEstimatedPv = (pvWp / 1000) * 950; // ~3800 kWh Jahresertrag bei 4kWp
 
-      // Prozentuale Verteilung des PV-Ertrags auf die 12 Monate (Jan bis Dez)
       const monthlyPvDistribution = [
-        0.03, // Januar (3%)
-        0.05, // Februar (5%)
-        0.08, // März (8%)
-        0.11, // April (11%)
-        0.14, // Mai (14%)
-        0.15, // Juni (15%)
-        0.14, // Juli (14%)
-        0.12, // August (12%)
-        0.09, // September (9%)
-        0.05, // Oktober (5%)
-        0.03, // November (3%)
-        0.02  // Dezember (2%)
+        0.025, // Januar (2.5%)
+        0.045, // Februar (4.5%)
+        0.08,  // März (8%)
+        0.11,  // April (11%)
+        0.15,  // Mai (15%)
+        0.16,  // Juni (16%)
+        0.15,  // Juli (15%)
+        0.12,  // August (12%)
+        0.09,  // September (9%)
+        0.05,  // Oktober (5%)
+        0.025, // November (2.5%)
+        0.015  // Dezember (1.5% - echter Wintertiefpunkt)
       ];
 
       let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
@@ -751,7 +749,7 @@ class StromAbrechnungCard extends HTMLElement {
       this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
       
       const balanceElem = this.querySelector('#balance_result');
-      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.jected ? '' : balance.toFixed(2)} €`;
+      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.toFixed(2)} €`;
       balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
 
       const forecastElem = this.querySelector('#forecast_text');
