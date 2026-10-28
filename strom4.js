@@ -190,9 +190,10 @@ class StromAbrechnungCard extends HTMLElement {
             <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Prognosefaktor (Netzbezug Multiplikator):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
               <option value="1.0" ${currentWinterProfile === "1.0" ? 'selected' : ''}>Wenig (Faktor 1.0)</option>
-              <option value="1.4" ${currentWinterProfile === "1.4" ? 'selected' : ''}>Mittel / Normal (Faktor 1.4)</option>
+              <option value="1.4" ${currentWinterProfile === "1.4" ? 'selected' : ''}>Normal (Faktor 1.4)</option>
               <option value="1.8" ${currentWinterProfile === "1.8" ? 'selected' : ''}>Viel (Faktor 1.8)</option>
-              <option value="2.5" ${currentWinterProfile === "2.5" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 2.5)</option>
+              <option value="2.5" ${currentWinterProfile === "2.5" ? 'selected' : ''}>Sehr Viel (Faktor 2.5)</option>
+              <option value="3.5" ${currentWinterProfile === "3.5" ? 'selected' : ''}>🔥 Extrem Viel (Faktor 3.5)</option>
             </select>
           </div>
 
@@ -850,9 +851,6 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
-      // --- AUTOMATISCHER EMPFOHLENER ABSCHLAG FÜR DIE ZUKÜNFTIGEN MONATE ---
-      // Berechnet, was in den noch verbleibenden Monaten gezahlt werden muss, 
-      // damit Gesamteinnahmen (bisher bezahlt + restliche Monate) genau den voraussichtlichen Gesamtkosten entsprechen.
       let alreadyPaidSoFar = 0;
       abschlagInputs.forEach((input, idx) => {
         if (idx <= pastMonthsCount - 1) {
@@ -863,7 +861,6 @@ class StromAbrechnungCard extends HTMLElement {
       const missingAmountForZero = predictedTotalCost - alreadyPaidSoFar;
       const recommendedFutureAbschlag = remainingMonths > 0 ? Math.max(0, missingAmountForZero / remainingMonths) : 0;
 
-      // Trage den empfohlenen Abschlag automatisch in die noch kommenden Monate ein (sofern nicht manuell überschrieben oder als Vorschau)
       abschlagInputs.forEach((input, idx) => {
         if (idx >= pastMonthsCount) {
           input.value = recommendedFutureAbschlag.toFixed(2);
