@@ -113,7 +113,7 @@ class StromAbrechnungCard extends HTMLElement {
             <div>
               <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Jahr anzeigen:</label>
               <select id="cfg_billing_year" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-                ${sortedYears.map(y => `<option value="${y}" ${y === activeYearStr ? 'selected' : ''}>${y}${y === currentRealYearStr ? '(Aktuell)' : ''}</option>`).join('')}
+                ${sortedYears.map(y => `<option value="${y}" ${y === activeYearStr ? 'selected' : ''}>${y} ${y === currentRealYearStr ? '(Aktuell)' : ''}</option>`).join('')}
               </select>
             </div>
             <div>
@@ -482,4 +482,264 @@ class StromAbrechnungCard extends HTMLElement {
       const isFutureMonth = (index > currentMonthOffset && activeYearStr === this.getCurrentActiveBillingYear());
 
       if (isCurrentMonth && !savedKwh && this._hass) {
-        const sensorId = localStorage.getItem('
+        const sensorId = localStorage.getItem('strom_config_sensor') || this.config.sensor;
+        if (sensorId && this._hass.states[sensorId]) {
+          const val = parseFloat(this._hass.states[sensorId].state);
+          if (!isNaN(val)) savedKwh = val;
+        }
+      }
+
+      if (isCurrentMonth && !savedPv && this._hass) {
+        const pvSensorId = localStorage.getItem('strom_config_pv_sensor') || this.config.pv_sensor;
+        if (pvSensorId && this._hass.states[pvSensorId]) {
+          const pvVal = parseFloat(this._hass.states[pvSensorId].state);
+          if (!isNaN(pvVal)) savedPv = pvVal;
+        }
+      }
+
+      const rowBackground = isCurrentMonth ? 'var(--card-background-color)' : 'var(--secondary-background-color)';
+      const rowBorder = isCurrentMonth ? '1px solid var(--primary-color)' : '1px solid var(--divider-color)';
+
+      const div = document.createElement('div');
+      div.style.cssText = `display: flex; align-items: center; justify-content: space-between; background: ${rowBackground}; padding: 8px 10px; border-radius: 8px; gap: 8px; border: ${rowBorder};`;
+      
+      let kwhFieldHtml = `<input type="number" step="0.1" class="kwh-input wide-input" data-index="${index}" value="${savedKwh}" placeholder="kWh">`;
+      let pvFieldHtml = `<input type="number" step="0.1" class="pv-input wide-input" data-index="${index}" value="${savedPv}" placeholder="PV kWh">`;
+
+      if (isFutureMonth) {
+        kwhFieldHtml = `<div class="forecast-kwh-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--secondary-text-color);">--</div>`;
+        pvFieldHtml = `<div class="forecast-pv-display" data-index="${index}" style="font-size: 0.8em; font-weight: 500; text-align: right; padding: 8px 6px; color: var(--success-color, #43a047);">--</div>`;
+      }
+
+      div.innerHTML = `
+        <div style="font-size: 0.8em; font-weight: ${isCurrentMonth ? '600' : '400'}; width: 95px; color: var(--primary-text-color);">${mObj.name}</div>
+        <div style="flex: 1;" title="Netzbezug in kWh">${kwhFieldHtml}</div>
+        <div style="flex: 1;" title="PV-Ertrag in kWh">${pvFieldHtml}</div>
+        <div style="flex: 1;" title="Abschlag in €"><input type="number" step="0.01" class="month-input wide-input" data-index="${index}" value="${savedAbschlag}"></div>
+      `;
+      grid.appendChild(div);
+    });
+
+    this.querySelectorAll('.month-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_abschlag_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.querySelectorAll('.kwh-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_kwh_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.querySelectorAll('.pv-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const yearKeyPrefix = activeYearStr.replace('/', '_');
+        localStorage.setItem(`strom_pv_${yearKeyPrefix}_${e.target.dataset.index}`, e.target.value);
+        this.calculateTotals();
+      });
+    });
+
+    this.calculateTotals();
+  }
+
+  calculateTotals() {
+    if (!this._hass) return;
+
+    const activeYearStr = this.getActiveBillingYear();
+    const startYear = parseInt(activeYearStr.split('/')[0]);
+    const startMonth = this.getStartMonth();
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = now.getMonth();
+    let currentMonthOffset = (currentYear - startYear) * 12 + (currentMonthNum - startMonth);
+    
+    let activeLimit = 11;
+    if (activeYearStr !== this.getCurrentActiveBillingYear()) {
+      activeLimit = 11;
+    } else {
+      if (currentMonthOffset < 0) activeLimit = -1;
+      else if (currentMonthOffset <= 11) activeLimit = currentMonthOffset;
+    }
+
+    let totalPaid = 0;
+    let totalKwh = 0;
+    let totalPvKwh = 0;
+
+    const abschlagInputs = this.querySelectorAll('.month-input');
+    const kwhInputs = this.querySelectorAll('.kwh-input');
+    const pvInputs = this.querySelectorAll('.pv-input');
+    
+    abschlagInputs.forEach((input, index) => {
+      if (index <= activeLimit) {
+        totalPaid += parseFloat(input.value) || 0;
+      }
+    });
+
+    let pastKwhTotal = 0;
+    let pastPvTotal = 0;
+    let pastMonthsCount = activeLimit < 0 ? 0 : (activeLimit + 1);
+
+    kwhInputs.forEach((input, index) => {
+      const val = parseFloat(input.value) || 0;
+      if (index <= activeLimit || activeYearStr !== this.getCurrentActiveBillingYear()) {
+        totalKwh += val;
+        pastKwhTotal += val;
+      }
+    });
+
+    pvInputs.forEach((input, index) => {
+      const val = parseFloat(input.value) || 0;
+      if (index <= activeLimit || activeYearStr !== this.getCurrentActiveBillingYear()) {
+        totalPvKwh += val;
+        pastPvTotal += val;
+      }
+    });
+
+    const pricePerKwh = parseFloat(localStorage.getItem('strom_config_price')) || this.config.price;
+    const energyCost = totalKwh * pricePerKwh; 
+
+    const feedInActive = localStorage.getItem('strom_config_feed_in_active') === 'true';
+    const feedInPrice = parseFloat(localStorage.getItem('strom_config_feed_in_price')) || 0;
+    const feedInEarnings = feedInActive ? (totalPvKwh * feedInPrice) : 0;
+
+    const totalAnnualFee = parseFloat(localStorage.getItem('strom_config_base_fee')) || this.config.base_fee;
+    
+    let proRataFee = (totalAnnualFee / 12) * pastMonthsCount;
+    const deadlineStr = localStorage.getItem('strom_config_deadline');
+    if (deadlineStr) {
+      const deadlineDate = new Date(deadlineStr);
+      const yearStart = new Date(startYear, startMonth, 1);
+      const totalDaysInYear = (new Date(startYear + 1, startMonth, 1) - yearStart) / (1000 * 60 * 60 * 24);
+      const elapsedDays = Math.max(0, Math.min(totalDaysInYear, (now - yearStart) / (1000 * 60 * 60 * 24)));
+      proRataFee = (totalAnnualFee / totalDaysInYear) * elapsedDays;
+    }
+
+    const totalCost = energyCost + proRataFee - feedInEarnings;
+    const balance = totalPaid - totalCost;
+
+    let forecastText = "Noch nicht genügend Daten für Prognose.";
+    const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
+    if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
+      const calculatedAvg = pastKwhTotal / pastMonthsCount;
+      const baseAvgKwh = Math.max(calculatedAvg, 520); 
+      const baseAvgPv = pastPvTotal / pastMonthsCount;
+      const remainingMonths = 12 - pastMonthsCount;
+      
+      const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
+
+      const getMonthKwhFactor = (mIndex) => {
+        if ([11, 0, 1].includes(mIndex)) return winterFactor;     
+        if ([2, 3, 10].includes(mIndex)) return 1.2;              
+        if ([9].includes(mIndex)) return 1.1;                     
+        if ([4, 8].includes(mIndex)) return 0.95;                   
+        return 0.75;                                              
+      };
+
+      const getMonthPvFactor = (mIndex) => {
+        if ([11, 0, 1].includes(mIndex)) return 0.2;              
+        if ([2, 10].includes(mIndex)) return 0.6;                 
+        if ([3, 9].includes(mIndex)) return 1.1;                  
+        if ([4, 8].includes(mIndex)) return 1.5;                  
+        return 1.8;                                               
+      };
+
+      let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
+      for (let i = 0; i < 12; i++) {
+        if (i > activeLimit) {
+          const kF = getMonthKwhFactor(tempCursorMonth);
+          const pF = getMonthPvFactor(tempCursorMonth);
+
+          const monthEstKwh = baseAvgKwh * kF;
+          const monthEstPv = Math.max(baseAvgPv, 150) * pF;
+
+          const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${i}"]`);
+          const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${i}"]`);
+          if (rowKwhDisp) rowKwhDisp.innerText = `~${monthEstKwh.toFixed(0)} kWh`;
+          if (rowPvDisp) rowPvDisp.innerText = `~${monthEstPv.toFixed(0)} kWh`;
+        }
+        tempCursorMonth = (tempCursorMonth + 1) % 12;
+      }
+
+      let estimatedRemainingKwh = 0;
+      let estimatedRemainingPv = 0;
+      
+      let cursorMonth = (startMonth + pastMonthsCount) % 12;
+      for (let r = 0; r < remainingMonths; r++) {
+        const kF = getMonthKwhFactor(cursorMonth);
+        const pF = getMonthPvFactor(cursorMonth);
+
+        estimatedRemainingKwh += (baseAvgKwh * kF);
+        estimatedRemainingPv += (Math.max(baseAvgPv, 150) * pF);
+
+        cursorMonth = (cursorMonth + 1) % 12;
+      }
+
+      const predictedTotalKwh = pastKwhTotal + estimatedRemainingKwh;
+      const predictedTotalPvKwh = pastPvTotal + estimatedRemainingPv;
+      
+      const predictedEnergyCost = predictedTotalKwh * pricePerKwh;
+      const predictedFeedInEarnings = feedInActive ? (predictedTotalPvKwh * feedInPrice) : 0;
+      const predictedTotalCost = predictedEnergyCost + totalAnnualFee - predictedFeedInEarnings;
+      
+      let totalAnnualPaid = 0;
+      abschlagInputs.forEach(input => {
+        totalAnnualPaid += parseFloat(input.value) || 0;
+      });
+
+      const predictedBalance = totalAnnualPaid - predictedTotalCost;
+      const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
+      const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
+
+      let deadlineInfo = "";
+      if (deadlineStr) {
+        const dDate = new Date(deadlineStr);
+        const daysLeft = Math.ceil((dDate - now) / (1000 * 60 * 60 * 24));
+        deadlineInfo = `Noch <strong>${daysLeft > 0 ? daysLeft : 0} Tage</strong> bis zum Stichtag (${dDate.toLocaleDateString('de-DE')})<br>`;
+      }
+
+      let forecastPvLabel = `${predictedTotalPvKwh.toFixed(0)} kWh PV`;
+      if (feedInActive) {
+        forecastPvLabel += ` (~${predictedFeedInEarnings.toFixed(2)} € Gutschrift)`;
+      }
+
+      forecastText = `${deadlineInfo}` +
+                     `Restliche Monate (Prognose):<br>` +
+                     `• Netzbezug: <strong>+${estimatedRemainingKwh.toFixed(0)} kWh</strong><br>` +
+                     `• PV-Ertrag: <strong style="color: var(--success-color, #43a047);">+${estimatedRemainingPv.toFixed(0)} kWh</strong><br>` +
+                     `-----------------------------------<br>` +
+                     `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${forecastPvLabel}</strong><br>` +
+                     `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
+    }
+
+    if (this.querySelector('#total_paid')) {
+      this.querySelector('#total_paid').innerText = `${totalPaid.toFixed(2)} €`;
+      this.querySelector('#energy_cost').innerText = `${energyCost.toFixed(2)} € (${totalKwh.toFixed(1)} kWh)`;
+      
+      let pvDisplayStr = `${totalPvKwh.toFixed(1)} kWh`;
+      if (feedInActive) {
+        pvDisplayStr += ` (+${feedInEarnings.toFixed(2)} €)`;
+      }
+      this.querySelector('#total_pv_savings').innerText = pvDisplayStr;
+
+      this.querySelector('#fee_display').innerText = `${proRataFee.toFixed(2)} €`;
+      this.querySelector('#total_cost').innerText = `${totalCost.toFixed(2)} €`;
+      
+      const balanceElem = this.querySelector('#balance_result');
+      balanceElem.innerText = `${balance >= 0 ? '+' : ''}${balance.toFixed(2)} €`;
+      balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
+
+      const forecastElem = this.querySelector('#forecast_text');
+      if (forecastElem) forecastElem.innerHTML = forecastText;
+    }
+  }
+
+  getCardSize() { return 12; }
+}
+
+customElements.define('strom-abrechnung-card', StromAbrechnungCard);
