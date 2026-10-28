@@ -262,20 +262,6 @@ class StromAbrechnungCard extends HTMLElement {
               <span>🔮 Realistische Jahresend-Prognose:</span>
             </div>
             <div id="forecast_text" style="color: var(--secondary-text-color);">Berechne Prognose...</div>
-            
-            <!-- ABGESCHLAG-SIMULATOR -->
-            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--divider-color);">
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; margin-bottom: 6px;">
-                <span style="font-weight: 500; color: var(--primary-text-color);">🎚️ Abschlag-Simulator:</span>
-                <span id="sim_val_label" style="font-weight: 600; color: var(--primary-color);">${currentDefaultAbschlag.toFixed(2)} € / Monat</span>
-              </div>
-              <input type="range" id="abschlag_slider" min="50" max="500" step="5" value="${currentDefaultAbschlag}" style="width: 100%; cursor: pointer; accent-color: var(--primary-color);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.85em;">
-                <span id="sim_result_text" style="color: var(--secondary-text-color);">Simulierte Bilanz: --</span>
-                <button id="apply_sim_btn" type="button" style="padding: 4px 10px; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em;" title="Diesen Wert als neuen Standard-Abschlag auf alle Monate anwenden">Übernehmen</button>
-              </div>
-            </div>
-
           </div>
         </div>
 
@@ -359,41 +345,6 @@ class StromAbrechnungCard extends HTMLElement {
             alert("Falsches Passwort!");
           }
         }
-      });
-    }
-
-    // Event-Listener für den Abschlag-Simulator Regler
-    const slider = this.querySelector('#abschlag_slider');
-    if (slider) {
-      slider.addEventListener('input', () => {
-        this.calculateTotals();
-      });
-    }
-
-    // Button zum Übernehmen des simulierten Abschlags
-    const applySimBtn = this.querySelector('#apply_sim_btn');
-    if (applySimBtn) {
-      applySimBtn.addEventListener('click', () => {
-        const savedPass = localStorage.getItem('strom_config_password') || this.config.admin_password;
-        if (savedPass && savedPass.trim() !== "" && !this._unlocked) {
-          const entered = prompt("PIN erforderlich, um den Abschlag zu übernehmen:");
-          if (entered !== savedPass) {
-            alert("Falsches Passwort!");
-            return;
-          }
-          this._unlocked = true;
-        }
-
-        const sliderVal = this.querySelector('#abschlag_slider').value;
-        const activeYearStr = this.getActiveBillingYear();
-        const yearKeyPrefix = activeYearStr.replace('/', '_');
-
-        localStorage.setItem('strom_config_default_abschlag', sliderVal);
-        for (let i = 0; i < 12; i++) {
-          localStorage.setItem(`strom_abschlag_${yearKeyPrefix}_${i}`, sliderVal);
-        }
-        alert(`Abschlag von ${sliderVal} € wurde erfolgreich auf alle Monate übertragen!`);
-        this.render();
       });
     }
 
@@ -878,6 +829,10 @@ class StromAbrechnungCard extends HTMLElement {
       const formattedBalance = `${predictedBalance >= 0 ? '+' : ''}${predictedBalance.toFixed(2)} €`;
       const statusText = predictedBalance >= 0 ? 'Erwartete Rückzahlung' : 'Erwartete Nachzahlung';
 
+      // --- AUTOMATISCHE ABSCHLAGS-BERRECHNUNG FÜR NULL-BILANZ ---
+      // Gesamtkosten geteilt durch 12 Monate ergibt den exakten monatlichen Abschlag für 0,00 € Bilanz
+      const recommendedMonthlyAbschlag = predictedTotalCost / 12;
+
       let deadlineInfo = "";
       if (deadlineStr) {
         const dDate = new Date(deadlineStr);
@@ -896,25 +851,8 @@ class StromAbrechnungCard extends HTMLElement {
                      `• PV-Ertrag: <strong style="color: var(--success-color, #43a047);">+${estimatedRemainingPv.toFixed(0)} kWh</strong><br>` +
                      `-----------------------------------<br>` +
                      `Vorauss. Gesamt (12 Mon.): <strong>${predictedTotalKwh.toFixed(0)} kWh Netz</strong> | <strong style="color: var(--success-color, #43a047);">${forecastPvLabel}</strong><br>` +
-                     `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong>`;
-
-      // --- SIMULATOR BERECHNUNG ---
-      const slider = this.querySelector('#abschlag_slider');
-      const simLabel = this.querySelector('#sim_val_label');
-      const simResultText = this.querySelector('#sim_result_text');
-      
-      if (slider && simLabel && simResultText) {
-        const simMonthly = parseFloat(slider.value) || 0;
-        simLabel.innerText = `${simMonthly.toFixed(2)} € / Monat`;
-
-        // Simulierte Gesamtabschläge für das ganze Jahr (12 Monate)
-        const simTotalPaid = simMonthly * 12;
-        const simBalance = simTotalPaid - predictedTotalCost;
-        const simFormatted = `${simBalance >= 0 ? '+' : ''}${simBalance.toFixed(2)} €`;
-        const simStatus = simBalance >= 0 ? 'Rückzahlung' : 'Nachzahlung';
-
-        simResultText.innerHTML = `Simulierte Bilanz: <strong style="color: ${simBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${simFormatted} (${simStatus})</strong>`;
-      }
+                     `${statusText}: <strong style="color: ${predictedBalance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)'};">${formattedBalance}</strong><br>` +
+                     `🎯 <strong>Empfohlener Abschlag (Null-Bilanz):</strong> <span style="color: var(--primary-color); font-weight: 600;">${recommendedMonthlyAbschlag.toFixed(2)} € / Monat</span>`;
     }
 
     if (this.querySelector('#total_paid')) {
