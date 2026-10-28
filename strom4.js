@@ -168,12 +168,12 @@ class StromAbrechnungCard extends HTMLElement {
           </div>
 
           <div style="margin-bottom: 10px;">
-            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Netzbezug Winter-Faktor (Dez–Feb):</label>
+            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Prognosefaktor (Netzbezug Multiplikator):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-              <option value="1.2" ${currentWinterProfile === "1.2" ? 'selected' : ''}>Wenig (Faktor 1.2 - leichter Winteranstieg)</option>
-              <option value="1.7" ${currentWinterProfile === "1.7" ? 'selected' : ''}>Mittel / Normal (Faktor 1.7)</option>
-              <option value="2.3" ${currentWinterProfile === "2.3" ? 'selected' : ''}>Viel (Faktor 2.3 - Hoher Winterbedarf)</option>
-              <option value="3.0" ${currentWinterProfile === "3.0" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 3.0 - Massiver Winterbedarf)</option>
+              <option value="1.0" ${currentWinterProfile === "1.0" ? 'selected' : ''}>Wenig (Faktor 1.0)</option>
+              <option value="1.4" ${currentWinterProfile === "1.4" ? 'selected' : ''}>Mittel / Normal (Faktor 1.4)</option>
+              <option value="1.8" ${currentWinterProfile === "1.8" ? 'selected' : ''}>Viel (Faktor 1.8)</option>
+              <option value="2.5" ${currentWinterProfile === "2.5" ? 'selected' : ''}>🔥 Extrem-Modus (Faktor 2.5)</option>
             </select>
           </div>
 
@@ -308,7 +308,7 @@ class StromAbrechnungCard extends HTMLElement {
       });
     }
 
-    // Live-Update direkt bei Änderung im Dropdown
+    // Sofortiges Live-Update der Prognose bei Auswahl im Dropdown
     if (winterProfileSelect) {
       winterProfileSelect.addEventListener('change', (e) => {
         localStorage.setItem('strom_config_winter_profile', e.target.value);
@@ -648,61 +648,35 @@ class StromAbrechnungCard extends HTMLElement {
     const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
     
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
+      // Basis-Durchschnitt aus den bisher eingetragenen Monaten
       const baseAvgKwh = pastKwhTotal / pastMonthsCount;
       const winterMultiplier = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
-
-      // --- Saisonaler Faktor: Winter (Dez, Jan, Feb) nutzt nun sauber den ausgewählten Multiplikator auf die Basis ---
-      const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterMultiplier;      // Dezember, Januar, Februar (Höchster Verbrauch)
-        if ([2, 10].includes(mIndex)) return 1.25;                      // März, November (Übergang)
-        if ([3, 9].includes(mIndex)) return 1.00;                       // April, Oktober
-        if ([4, 8].includes(mIndex)) return 0.85;                       // Mai, September
-        return 0.70;                                                    // Juni, Juli, August (Sommer-Tief)
-      };
-
-      const pvWp = parseFloat(localStorage.getItem('strom_config_pv_wp')) || this.config.pv_wp;
-      const kwp = pvWp / 1000;
-
-      const monthlyKwhPerKwp = [
-        14,  // Januar (~56 kWh)
-        20,  // Februar (~80 kWh)
-        50,  // März (~200 kWh)
-        90,  // April (~360 kWh)
-        115, // Mai (~460 kWh)
-        125, // Juni (~500 kWh)
-        115, // Juli (~460 kWh)
-        95,  // August (~380 kWh)
-        70,  // September (~280 kWh)
-        40,  // Oktober (~160 kWh)
-        18,  // November (~72 kWh)
-        14   // Dezember (~56 kWh)
-      ];
-
-      let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
-      for (let i = 0; i < 12; i++) {
-        if (i > activeLimit) {
-          const kF = getMonthKwhFactor(tempCursorMonth);
-          const monthEstKwh = baseAvgKwh * kF;
-          const monthEstPv = kwp * monthlyKwhPerKwp[tempCursorMonth];
-
-          const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${i}"]`);
-          const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${i}"]`);
-          if (rowKwhDisp) rowKwhDisp.innerText = `~${monthEstKwh.toFixed(0)} kWh`;
-          if (rowPvDisp) rowPvDisp.innerText = `~${monthEstPv.toFixed(0)} kWh`;
-        }
-        tempCursorMonth = (tempCursorMonth + 1) % 12;
-      }
+      const remainingMonths = 12 - pastMonthsCount;
 
       let estimatedRemainingKwh = 0;
       let estimatedRemainingPv = 0;
       
       let cursorMonth = (startMonth + pastMonthsCount) % 12;
-      const remainingMonths = 12 - pastMonthsCount;
-      
+
       for (let r = 0; r < remainingMonths; r++) {
-        const kF = getMonthKwhFactor(cursorMonth);
-        estimatedRemainingKwh += (baseAvgKwh * kF);
-        estimatedRemainingPv += (kwp * monthlyKwhPerKwp[cursorMonth]);
+        // Wintermonate (Dez, Jan, Feb) kriegen den Multiplikator, alle anderen Monate laufen normal weiter
+        let monthKwh = baseAvgKwh;
+        if ([11, 0, 1].includes(cursorMonth)) {
+          monthKwh *= winterMultiplier; 
+        }
+        estimatedRemainingKwh += monthKwh;
+
+        // PV-Prognose (konservativ im Winter, höher im Sommer)
+        let monthPv = 100;
+        if ([11, 0, 1].includes(cursorMonth)) monthPv = 30; // Wintertief
+        else if ([5, 6, 7].includes(cursorMonth)) monthPv = 450; // Sommertiefpunkt/Peak
+        estimatedRemainingPv += monthPv;
+
+        // Zeige die Vorschau direkt in der Zeile an
+        const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${pastMonthsCount + r}"]`);
+        const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${pastMonthsCount + r}"]`);
+        if (rowKwhDisp) rowKwhDisp.innerText = `~${monthKwh.toFixed(0)} kWh`;
+        if (rowPvDisp) rowPvDisp.innerText = `~${monthPv.toFixed(0)} kWh`;
 
         cursorMonth = (cursorMonth + 1) % 12;
       }
@@ -736,7 +710,7 @@ class StromAbrechnungCard extends HTMLElement {
       }
 
       forecastText = `${deadlineInfo}` +
-                     `Restliche Monate (Prognose auf Vormonats-Basis):<br>` +
+                     `Restliche Monate (Prognose):<br>` +
                      `• Netzbezug: <strong>+${estimatedRemainingKwh.toFixed(0)} kWh</strong><br>` +
                      `• PV-Ertrag: <strong style="color: var(--success-color, #43a047);">+${estimatedRemainingPv.toFixed(0)} kWh</strong><br>` +
                      `-----------------------------------<br>` +
