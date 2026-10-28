@@ -168,12 +168,12 @@ class StromAbrechnungCard extends HTMLElement {
           </div>
 
           <div style="margin-bottom: 10px;">
-            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Verbrauchsprofil (Prognose Nov–Feb):</label>
+            <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Winter-Verbrauchsprofil (Prognose Nov–Feb Basis-Multiplikator):</label>
             <select id="cfg_winter_profile" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);">
-              <option value="1.40" ${currentWinterProfile === "1.40" ? 'selected' : ''}>Wenig (~730 kWh/M)</option>
-              <option value="1.75" ${currentWinterProfile === "1.75" ? 'selected' : ''}>Mittel / Normal (~910 kWh/M)</option>
-              <option value="2.20" ${currentWinterProfile === "2.20" ? 'selected' : ''}>Viel (~1.140 kWh/M)</option>
-              <option value="2.80" ${currentWinterProfile === "2.80" ? 'selected' : ''}>🔥 Extrem-Modus (~1.450 kWh/M)</option>
+              <option value="1.2" ${currentWinterProfile === "1.2" ? 'selected' : ''}>Wenig (~600 kWh/M im Winter)</option>
+              <option value="1.6" ${currentWinterProfile === "1.6" ? 'selected' : ''}>Mittel / Normal (~850 kWh/M im Winter)</option>
+              <option value="2.1" ${currentWinterProfile === "2.1" ? 'selected' : ''}>Viel (~1.150 kWh/M im Winter)</option>
+              <option value="2.8" ${currentWinterProfile === "2.8" ? 'selected' : ''}>🔥 Extrem-Modus (~1.500 kWh/M im Winter)</option>
             </select>
           </div>
 
@@ -637,39 +637,39 @@ class StromAbrechnungCard extends HTMLElement {
     let forecastText = "Noch nicht genügend Daten für Prognose.";
     const isCurrentYear = (activeYearStr === this.getCurrentActiveBillingYear());
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
+      // Wir nutzen einen intelligenten Mindest-Basiswert von mindestens 550 kWh, falls die bisherigen Sommermonate zu niedrig waren
       const calculatedAvg = pastKwhTotal / pastMonthsCount;
-      const baseAvgKwh = Math.max(calculatedAvg, 520); 
+      const baseAvgKwh = Math.max(calculatedAvg, 550); 
       const remainingMonths = 12 - pastMonthsCount;
       
-      const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
+      const winterMultiplier = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
 
-      // --- Netzbezug-Saisonalität mit echtem Winter-Fokus ---
+      // --- Sauber definierte monatliche Verbrauchs-Multiplikatoren (Dez/Jan/Feb nutzen den starken Extrem-Faktor voll aus!) ---
       const getMonthKwhFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return winterFactor;      // Dez, Jan, Feb (Extrem = 2.8 -> ~1.450 kWh)
-        if ([2, 10].includes(mIndex)) return 1.40;                // März, Nov
-        if ([3, 9].includes(mIndex)) return 1.15;                 // April, Okt
-        if ([4, 8].includes(mIndex)) return 0.90;                 // Mai, Sep
-        return 0.70;                                              // Jun, Jul, Aug
+        if ([11, 0, 1].includes(mIndex)) return winterMultiplier * 1.35; // Dez, Jan, Feb (Zieht im Extrem-Modus auf über 1.500 kWh hoch)
+        if ([2, 10].includes(mIndex)) return 1.45;                      // März, Nov
+        if ([3, 9].includes(mIndex)) return 1.15;                       // April, Okt
+        if ([4, 8].includes(mIndex)) return 0.90;                       // Mai, Sep
+        return 0.70;                                                    // Juni, Jul, Aug (Sommer-Tief)
       };
 
-      // --- Absolut realistische PV-Monatswerte für 4.000 Wp (4 kWp) im Winter-Minimum ---
+      // --- Perfekt realistische PV-Monatswerte für 4.000 Wp (4 kWp) ---
       const pvWp = parseFloat(localStorage.getItem('strom_config_pv_wp')) || this.config.pv_wp;
       const kwp = pvWp / 1000;
 
-      // Ertrag in kWh pro kWp für jeden Monat (Jan bis Dez) in Deutschland
       const monthlyKwhPerKwp = [
-        7,   // Januar (~28 kWh bei 4kWp)
-        15,  // Februar (~60 kWh)
-        55,  // März (~220 kWh)
-        105, // April (~420 kWh)
-        135, // Mai (~540 kWh)
-        140, // Juni (~560 kWh)
-        135, // Juli (~540 kWh)
-        115, // August (~460 kWh)
-        80,  // September (~320 kWh)
-        40,  // Oktober (~160 kWh)
-        12,  // November (~48 kWh)
-        5    // Dezember (~20 kWh) -> Reiner Winter-Einbruch!
+        8,   // Januar (~32 kWh)
+        18,  // Februar (~72 kWh)
+        60,  // März (~240 kWh)
+        110, // April (~440 kWh)
+        140, // Mai (~560 kWh)
+        150, // Juni (~600 kWh)
+        140, // Juli (~560 kWh)
+        120, // August (~480 kWh)
+        85,  // September (~340 kWh)
+        45,  // Oktober (~180 kWh)
+        15,  // November (~60 kWh)
+        6    // Dezember (~24 kWh) - Realistisches Wintertief!
       ];
 
       let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
