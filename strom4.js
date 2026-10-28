@@ -474,7 +474,6 @@ class StromAbrechnungCard extends HTMLElement {
       const yearKeyPrefix = activeYearStr.replace('/', '_');
       const savedAbschlag = localStorage.getItem(`strom_abschlag_${yearKeyPrefix}_${index}`) ?? defaultAbschlag;
       
-      // Holt gespeicherten Wert. Falls leer und es ist der aktuelle Monat, fülle es mit dem Sensor (falls vorhanden), bleibt aber editierbar!
       let savedKwh = localStorage.getItem(`strom_kwh_${yearKeyPrefix}_${index}`) ?? '';
       let savedPv = localStorage.getItem(`strom_pv_${yearKeyPrefix}_${index}`) ?? '';
 
@@ -628,7 +627,8 @@ class StromAbrechnungCard extends HTMLElement {
     if (pastMonthsCount > 0 && pastMonthsCount < 12 && isCurrentYear) {
       const calculatedAvg = pastKwhTotal / pastMonthsCount;
       const baseAvgKwh = Math.max(calculatedAvg, 520); 
-      const baseAvgPv = pastPvTotal / pastMonthsCount;
+      // Realistischer Basiswert für PV aus den bisherigen Monaten ermitteln (Minimum auf Sommer-Verhältnisse geeicht, aber im Winter deckt der Faktor das ab)
+      const baseAvgPv = pastPvTotal > 0 ? (pastPvTotal / pastMonthsCount) : 300; 
       const remainingMonths = 12 - pastMonthsCount;
       
       const winterFactor = parseFloat(localStorage.getItem('strom_config_winter_profile') || this.config.winter_profile);
@@ -641,12 +641,13 @@ class StromAbrechnungCard extends HTMLElement {
         return 0.75;                                              
       };
 
+      // --- Realistische PV-Faktoren (Dez, Jan, Feb fast auf 0!) ---
       const getMonthPvFactor = (mIndex) => {
-        if ([11, 0, 1].includes(mIndex)) return 0.2;              
-        if ([2, 10].includes(mIndex)) return 0.6;                 
-        if ([3, 9].includes(mIndex)) return 1.1;                  
-        if ([4, 8].includes(mIndex)) return 1.5;                  
-        return 1.8;                                               
+        if ([11, 0, 1].includes(mIndex)) return 0.08;             // Dezember, Januar, Februar (Fast 0 Ertrag)
+        if ([2, 10].includes(mIndex)) return 0.4;                 // März, November (Übergang)
+        if ([3, 9].includes(mIndex)) return 0.8;                  // April, Oktober
+        if ([4, 8].includes(mIndex)) return 1.3;                  // Mai, September
+        return 1.6;                                               // Juni, Juli, August (Sommer-Peak)
       };
 
       let tempCursorMonth = (startMonth + pastMonthsCount) % 12;
@@ -656,7 +657,7 @@ class StromAbrechnungCard extends HTMLElement {
           const pF = getMonthPvFactor(tempCursorMonth);
 
           const monthEstKwh = baseAvgKwh * kF;
-          const monthEstPv = Math.max(baseAvgPv, 150) * pF;
+          const monthEstPv = baseAvgPv * pF;
 
           const rowKwhDisp = this.querySelector(`.forecast-kwh-display[data-index="${i}"]`);
           const rowPvDisp = this.querySelector(`.forecast-pv-display[data-index="${i}"]`);
@@ -675,7 +676,7 @@ class StromAbrechnungCard extends HTMLElement {
         const pF = getMonthPvFactor(cursorMonth);
 
         estimatedRemainingKwh += (baseAvgKwh * kF);
-        estimatedRemainingPv += (Math.max(baseAvgPv, 150) * pF);
+        estimatedRemainingPv += (baseAvgPv * pF);
 
         cursorMonth = (cursorMonth + 1) % 12;
       }
