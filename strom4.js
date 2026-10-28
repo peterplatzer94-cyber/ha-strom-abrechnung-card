@@ -94,7 +94,6 @@ class StromAbrechnungCard extends HTMLElement {
 
     const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
-    // Schloss-Symbol für den Header je nach Sperrstatus
     const hasPassword = currentPassword && currentPassword.trim() !== "";
     const lockIcon = hasPassword ? (this._unlocked ? "🔓" : "🔒") : "";
 
@@ -171,7 +170,7 @@ class StromAbrechnungCard extends HTMLElement {
               <input type="number" step="100" id="cfg_pv_wp" value="${currentPvWp}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
             </div>
             <div>
-              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;" title="Leer lassen für kein Passwort">Sicherheits-PIN / Passwort:</label>
+              <label style="font-size: 0.75em; color: var(--secondary-text-color); display: block; margin-bottom: 4px;">Sicherheits-PIN / Passwort:</label>
               <input type="password" id="cfg_password" value="${currentPassword}" placeholder="Frei / Ohne PIN" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); box-sizing: border-box;">
             </div>
           </div>
@@ -305,7 +304,6 @@ class StromAbrechnungCard extends HTMLElement {
     const pvSensorPicker = this.querySelector('#cfg_pv_sensor_picker');
     if (pvSensorPicker && this._hass) pvSensorPicker.hass = this._hass;
 
-    // Klick auf das Schloss-Symbol zum Entsperren / Sperren
     const lockBtn = this.querySelector('#lock_status_btn');
     if (lockBtn) {
       lockBtn.addEventListener('click', () => {
@@ -558,7 +556,6 @@ class StromAbrechnungCard extends HTMLElement {
     if (currentMonthOffset < 0) currentMonthOffset = -999;
     if (currentMonthOffset > 11) currentMonthOffset = 999;
 
-    // Prüfen, ob ein Passwort gesetzt ist und ob entsperrt wurde
     const adminPass = localStorage.getItem('strom_config_password') || this.config.admin_password;
     const isLocked = adminPass && adminPass.trim() !== "" && !this._unlocked;
 
@@ -613,7 +610,6 @@ class StromAbrechnungCard extends HTMLElement {
       grid.appendChild(div);
     });
 
-    // Wenn gesperrt, Klick auf die Felder fängt ab und fragt nach PIN
     if (isLocked) {
       grid.querySelectorAll('input').forEach(input => {
         input.addEventListener('focus', (e) => {
@@ -820,7 +816,7 @@ class StromAbrechnungCard extends HTMLElement {
       balanceElem.style.color = balance >= 0 ? 'var(--success-color, #43a047)' : 'var(--error-color, #e53935)';
 
       const forecastElem = this.querySelector('#forecast_text');
-      if (forecastElem) forecastElem.innerHTML = forecastTest;
+      if (forecastElem) forecastElem.innerHTML = forecastText;
     }
   }
 
